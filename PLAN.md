@@ -7,6 +7,25 @@ a stock Pixel 7 running Android 16/API 36. Local speech availability is displaye
 offline speech trials, cloud authentication, and hands-free behavior remain to be
 validated. See `docs/EXPERIMENTS.md` for implementation evidence and pending tests.
 
+## Work tracking
+
+Last updated: 27 October 2026 (Australia/Brisbane).
+
+**Current stage:** phase 0, device feasibility experiments. The diagnostics app is
+installed and launches successfully. Full assistant functionality is not complete.
+
+Use the [implementation checklist](#6-implementation-checklist) as the source of
+truth for task completion. `[x]` means the stated deliverable is complete; `[ ]`
+means outstanding. Implementation and device validation have separate items, so
+working code does not automatically count as a passed experiment. Record test
+conditions, results, failures, and dates in [the experiment log](docs/EXPERIMENTS.md),
+then update the matching task and phase status here. Keep task IDs stable as work
+progresses. A phase is complete only when its exit gate in section 4 is satisfied.
+
+**Next work:** validate offline speech on the Pixel (P0-12 through P0-14), resolve
+the distribution/provider decisions (P0-17), and test model authentication (P0-18).
+Upgrade the SDK/toolchain before background-audio experiments (P0-15).
+
 ## 1. Feasibility verdict
 
 **A useful personal assistant is realistic.** Build a native Android app that runs its interface, speech, wake-word detection, memory, and Google integrations locally, with cloud AI for reasoning and image understanding. “Runs on the phone” must allow network access for the model, Gmail, and Drive. Fully offline ChatGPT reasoning is outside this architecture.
@@ -143,14 +162,14 @@ Show `Idle`, `Wake word enabled`, `Listening`, `Transcribing locally`, `Thinking
 
 Estimates below are engineering estimates for one developer already comfortable with Android, working roughly full-time. They exclude third-party approval delays and are not measured commitments.
 
-| Phase | Effort | Deliverable and exit gate |
-| --- | --- | --- |
-| 0. Resolve feasibility | 3–5 days | Minimal APK on the actual Pixel; prove subscription auth/text/image/tool/refresh, offline STT/TTS, and a short screen-off keyword session. Record OS, account eligibility, model versions, latency, RAM, and battery observations. Select provider route explicitly. |
-| 1. Core conversation | 1–2 weeks | Push-to-talk/text input, local speech, streamed model output, persona, cancellation, visible state, and persisted history. Survive network loss without executing phantom actions. |
-| 2. Memory and vision | 1 week | Confirm/edit/forget facts across restarts; answer about an explicitly captured image; camera resources release on cancel/background. |
-| 3. Google tools | 1–2 weeks | Search/read mail, prepare and explicitly send one test email, read a selected document, create a confirmed Drive note. Verify scopes, expired grants, account mismatch, and duplicate-send handling. |
-| 4. Hands-free sessions | 1–2 weeks | Keyword -> utterance -> reply with screen off in a user-started session; Stop works; measure false wakes, missed wakes, and incremental battery use. |
-| 5. Daily-use hardening | 1–2 weeks | Lock-screen privacy, calls/headsets, process recreation, deletion/export, permission changes, bounded storage, and several days of real use. |
+| Phase | Status | Effort | Deliverable and exit gate |
+| --- | --- | --- | --- |
+| 0. Resolve feasibility | In progress: scaffold deployed; speech/model experiments pending | 3–5 days | Minimal APK on the actual Pixel; prove subscription auth/text/image/tool/refresh, offline STT/TTS, and a short screen-off keyword session. Record OS, account eligibility, model versions, latency, RAM, and battery observations. Select provider route explicitly. |
+| 1. Core conversation | Not started; audio scaffold exists | 1–2 weeks | Push-to-talk/text input, local speech, streamed model output, persona, cancellation, visible state, and persisted history. Survive network loss without executing phantom actions. |
+| 2. Memory and vision | Not started | 1 week | Confirm/edit/forget facts across restarts; answer about an explicitly captured image; camera resources release on cancel/background. |
+| 3. Google tools | Not started | 1–2 weeks | Search/read mail, prepare and explicitly send one test email, read a selected document, create a confirmed Drive note. Verify scopes, expired grants, account mismatch, and duplicate-send handling. |
+| 4. Hands-free sessions | Not started | 1–2 weeks | Keyword -> utterance -> reply with screen off in a user-started session; Stop works; measure false wakes, missed wakes, and incremental battery use. |
+| 5. Daily-use hardening | Not started | 1–2 weeks | Lock-screen privacy, calls/headsets, process recreation, deletion/export, permission changes, bounded storage, and several days of real use. |
 
 Allow roughly **6–10 weeks** for a personal MVP with contingency; several months is more realistic when learning Android alongside the project. A public app needs a separate release plan for verification, policy review, distribution requirements, support, and account/backend operations.
 
@@ -187,15 +206,82 @@ Use a locally enforced daily request/token budget, bounded context, and backend 
 
 Defer continuous video, autonomous sending/deletion, whole-account indexing, fully local general reasoning, background inbox monitoring, and hardware hotword integration. These can be reconsidered using measurements from the MVP.
 
-## 6. First implementation backlog
+## 6. Implementation checklist
 
-- [ ] Confirm whether the app will be open source, whether an API fallback budget is acceptable, and whether wake-word sessions meet the intended usage.
-- [ ] Record the Pixel's Android version, free storage, battery condition, installed offline voice, and recognition language availability.
-- [x] Scaffold a Kotlin/Compose project with explicit audio state and separate model/speech boundaries; build, lint, and deploy to the Pixel.
-- [ ] Complete the phase-0 subscription and local-audio experiments; record failures as well as successes.
-- [ ] Decide on direct plan usage or an explicitly approved fallback before building provider-specific features.
-- [ ] Implement the push-to-talk conversation loop and measure it on-device.
-- [ ] Add local memory/persona, then camera snapshots, then Google read tools and confirmed writes.
-- [ ] Add wake-word session mode only after the basic assistant is usable.
+### Phase 0 — Scaffold and feasibility
 
-**Decision:** proceed with phase 0. The overall assistant is technically credible; the unresolved questions are account-specific subscription access, the intended distribution model, and measured locked-phone voice behavior. Resolve those first rather than promising an always-on assistant from the README alone.
+Completed items below were verified on 27 October 2026. Build/deployment evidence
+is in [Experiment 001](docs/EXPERIMENTS.md#experiment-001-stock-pixel-connection-and-diagnostics-scaffold).
+Items labeled “implement” confirm code exists and builds; their separate trial
+items remain open until exercised on-device.
+
+- [x] **P0-01:** Research each README goal, document feasibility, architecture, risks, estimates, and primary sources in this plan.
+- [x] **P0-02:** Locate a working Android SDK, compatible JDK, and Gradle installation; resolve the helper's Java 25 incompatibility by selecting Java 17/21.
+- [x] **P0-03:** Enable and authorize USB debugging; establish ADB access to the stock Pixel 7 without rooting or resetting it.
+- [x] **P0-04:** Record device model, Android release/API, CPU ABI, phone language, and reported speech capabilities. Observed: Pixel 7, Android 16/API 36, arm64-v8a, en-US, recognizer available, `en-us-x-tpf-local` voice.
+- [x] **P0-05:** Create the Kotlin/Compose app module, pinned dependencies, Gradle wrapper, and Git exclusions for local configuration, outputs, and signing files.
+- [x] **P0-06:** Implement diagnostics UI, ViewModel/Flow state, explicit audio states, and a separate unconfigured model-provider interface.
+- [x] **P0-07:** Implement an on-device-only utterance recognition path, runtime microphone permission request, transcript display, and recognition error messages.
+- [x] **P0-08:** Implement offline-English voice selection, local playback controls, and transcript readback.
+- [x] **P0-09:** Implement Stop/background audio cleanup, stale callback guards, app icon, and backup/transfer exclusions.
+- [x] **P0-10:** Add and exercise PowerShell `doctor`, `build`, `install`, and `run` actions; document setup and speech-test steps in README.
+- [x] **P0-11:** Build and lint the final scaffold, install it, launch it on the Pixel, inspect the rendered diagnostics and recent startup crash logs. Result: zero lint errors, five advisory warnings; startup succeeded.
+- [ ] **P0-12:** Perform and record an actual offline TTS playback trial with Wi-Fi/mobile data disabled; confirm audible output.
+- [ ] **P0-13:** Perform and record an actual offline STT trial in the selected language; verify the transcript without cloud fallback.
+- [ ] **P0-14:** Exercise Stop, app backgrounding, microphone permission denial/revocation, and repeated speech attempts; confirm microphone release and truthful UI state.
+- [ ] **P0-15:** Upgrade compile/target SDK and compatible build dependencies for Android 16 testing; rebuild, lint, reinstall, and repeat audio lifecycle checks before background-audio work. Current baseline targets API 35.
+- [ ] **P0-16:** Record free storage, battery condition, speech/model versions where available, baseline RAM, and initial latency/battery measurements. Availability flags alone do not validate language-model downloads.
+- [ ] **P0-17:** Resolve whether the app will be open source, whether any paid API fallback is acceptable, and whether user-started wake-word sessions meet the intended usage.
+- [ ] **P0-18:** Implement the documented model-authentication experiment and verify account eligibility, browser callback, code exchange, protected credential storage, renewal, and reconnect on the phone.
+- [ ] **P0-19:** Validate completed text, image, and function-call turns through that provider; record selected model and disconnect/usage-limit behavior.
+- [ ] **P0-20:** Select and document the viable provider route explicitly. If subscription access fails, record why and obtain a decision before introducing billable access.
+- [ ] **P0-21:** Prototype a short user-started local keyword session and test with the screen locked; record initial battery/lifecycle observations. This is a feasibility spike, not the full hands-free feature.
+- [ ] **P0-22:** Review the evidence and close the phase-0 exit gate, or revise scope with the remaining limitations documented.
+
+### Phase 1 — Core conversation
+
+- [ ] **P1-01:** Add text input and connect push-to-talk transcription to the selected model provider and local speech output.
+- [ ] **P1-02:** Implement streaming replies, sentence-level playback, persona settings, and bounded conversation context.
+- [ ] **P1-03:** Extend the controller with turn IDs, cancellation, timeouts, bounded retries/tool rounds, and network/error states.
+- [ ] **P1-04:** Persist conversation history and restore it safely after process recreation; never replay pending mutations automatically.
+- [ ] **P1-05:** Verify a complete voice/text conversation, cancellation, and network interruption on-device; record median/p95 response latency against section 4 targets.
+
+### Phase 2 — Memory and vision
+
+- [ ] **P2-01:** Add Room storage for memories/persona, provenance, timestamps, expiry, and bounded keyword/full-text retrieval.
+- [ ] **P2-02:** Add confirm/edit/remember/forget/export/delete controls, including removal of derived summaries and indexes.
+- [ ] **P2-03:** Verify memory persistence across restart and deletion from subsequent model context.
+- [ ] **P2-04:** Add CameraX preview, front/rear selection, explicit snapshot capture, resize, temporary-file cleanup, and visible camera/upload state.
+- [ ] **P2-05:** Verify an answer about a user-captured image through the selected provider; confirm cancel/background releases the camera and uploaded context is clear to the user.
+
+### Phase 3 — Gmail and Drive tools
+
+- [ ] **P3-01:** Configure the Google Cloud project, APIs, Android OAuth registration, consent/test users, and incremental authorization.
+- [ ] **P3-02:** Implement bounded Gmail search/read with MIME extraction and local email preparation using the minimum required scopes.
+- [ ] **P3-03:** Implement selected-document access through Android's document picker, then scoped Drive API access and Google Docs export as needed.
+- [ ] **P3-04:** Add schema-validated tool dispatch, account/file boundaries, untrusted-content handling, and an exact-payload confirmation screen for mutations.
+- [ ] **P3-05:** Implement confirmed Gmail sending and Drive note creation, including interrupted-send reconciliation and local deduplication.
+- [ ] **P3-06:** Verify read tools, one confirmed test email, and one confirmed Drive note; test cancellation, expired/revoked grants, account mismatch, injected instructions, and ambiguous timeouts.
+- [ ] **P3-07:** Document the actual Google-data/cloud-model path, required disclosures, permitted use, and any verification/security-assessment requirements for the intended distribution.
+
+### Phase 4 — Hands-free sessions
+
+- [ ] **P4-01:** Select a keyword engine/model after the phase-0 spike; record licensing, model size, quality, and offline behavior.
+- [ ] **P4-02:** Implement user-started microphone foreground-service sessions with correct permissions, notification, Stop action, and visible listening state.
+- [ ] **P4-03:** Integrate keyword detection, utterance recognition, model turns, and playback without microphone conflicts or self-triggering.
+- [ ] **P4-04:** Measure intended/missed/false wakes, locked-screen operation, and incremental eight-hour battery drain against section 4 targets.
+- [ ] **P4-05:** Verify service termination, reboot/force-stop recovery messaging, and explicit restart behavior; document supported session limits.
+
+### Phase 5 — Daily-use hardening
+
+- [ ] **P5-01:** Enforce unlock before private readout and external mutations; verify lock-screen behavior.
+- [ ] **P5-02:** Exercise calls, Bluetooth/headset changes, audio focus, permission changes, process recreation, and network transitions.
+- [ ] **P5-03:** Finish credential/content encryption, bounded storage, temporary-media cleanup, and user-controlled export/deletion; verify backup/transfer behavior.
+- [ ] **P5-04:** Add/enforce daily request/token budgets and bounded context; test exhaustion without automatic billable fallback.
+- [ ] **P5-05:** Run the representative 30-command speech trial and several days of normal usage; record failures and fix material regressions.
+- [ ] **P5-06:** Review all phase exit gates and document remaining limitations before calling the personal MVP complete. Plan public distribution separately if requested.
+
+**Current decision:** continue phase 0. The scaffold/deployment work is complete;
+offline speech trials, account-specific model access, and locked-phone keyword
+behavior remain open. No full feature or phase is marked complete solely because
+its interface or diagnostic availability flag exists.
