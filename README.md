@@ -2,6 +2,7 @@
 
 ## Project Goals
 - AI Agent that runs on a google pixel 7 phone.
+- The phone and all identities are completely dedicated and controlled by the agent.
 - Supports email (gmail).
 - Supports google drive.
 - Supports the open [Agent Skills](https://agentskills.io/home) format, with Gmail and Drive workflows using shared phone-control tools to operate signed-in apps.
