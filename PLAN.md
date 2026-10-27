@@ -1,7 +1,11 @@
 # Pixel 7 personal AI agent: feasibility and implementation plan
 
 Research date: 27 October 2026 (Australia/Brisbane).
-Scope: the eleven goals in `README.md`. The repository currently contains goals only; none of the capabilities below has been implemented or measured on the phone.
+Scope: the eleven goals in `README.md`. Initial research started with goals only.
+The first Kotlin/Compose diagnostics scaffold now builds and deploys over USB to
+a stock Pixel 7 running Android 16/API 36. Local speech availability is displayed;
+offline speech trials, cloud authentication, and hands-free behavior remain to be
+validated. See `docs/EXPERIMENTS.md` for implementation evidence and pending tests.
 
 ## 1. Feasibility verdict
 
@@ -187,7 +191,7 @@ Defer continuous video, autonomous sending/deletion, whole-account indexing, ful
 
 - [ ] Confirm whether the app will be open source, whether an API fallback budget is acceptable, and whether wake-word sessions meet the intended usage.
 - [ ] Record the Pixel's Android version, free storage, battery condition, installed offline voice, and recognition language availability.
-- [ ] Scaffold a Kotlin/Compose project with explicit controller state and replaceable model/speech interfaces.
+- [x] Scaffold a Kotlin/Compose project with explicit audio state and separate model/speech boundaries; build, lint, and deploy to the Pixel.
 - [ ] Complete the phase-0 subscription and local-audio experiments; record failures as well as successes.
 - [ ] Decide on direct plan usage or an explicitly approved fallback before building provider-specific features.
 - [ ] Implement the push-to-talk conversation loop and measure it on-device.
