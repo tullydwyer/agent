@@ -5,6 +5,13 @@ import org.junit.Test
 
 class ResponseStreamTest {
     private fun read(value: String) = ResponseStream.read(value.reader().buffered())
+    @Test fun deliversDeltasBeforeCompletionButRejectsInterruptedStream() {
+        val deltas = mutableListOf<String>()
+        assertThrows(IllegalStateException::class.java) {
+            ResponseStream.read("data: {\"type\":\"response.output_text.delta\",\"delta\":\"hello\"}\n\n".reader().buffered()) { deltas.add(it) }
+        }
+        assertEquals(listOf("hello"), deltas)
+    }
     @Test fun acceptsMultilineCompletion() {
         val response = read(": heartbeat\n\ndata: {\"type\":\"response.completed\",\ndata: \"response\":{\"status\":\"completed\",\"output\":[]}}\n\ndata: [DONE]\n\n")
         assertEquals("completed", response.getString("status"))

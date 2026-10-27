@@ -62,7 +62,9 @@ class PlanUsageProvider(private val auth: PlanUsageAuth) : ModelProvider {
         return "Function executed once after completion. " + text(request(input, tools))
     }
 
-    private suspend fun request(input: JSONArray, tools: JSONArray? = null, requireTool: Boolean = false): JSONObject = withContext(Dispatchers.IO) {
+    suspend fun conversation(input: JSONArray, onDelta: (String) -> Unit): String = text(request(input, onDelta = onDelta))
+
+    private suspend fun request(input: JSONArray, tools: JSONArray? = null, requireTool: Boolean = false, onDelta: (String) -> Unit = {}): JSONObject = withContext(Dispatchers.IO) {
         val model = selectedModel ?: error("Fetch and select an account model first.")
         val token = auth.accessToken()
         val body = JSONObject().put("model", model).put("input", input).put("store", false).put("stream", true)
@@ -75,7 +77,7 @@ class PlanUsageProvider(private val auth: PlanUsageAuth) : ModelProvider {
         try {
             requestCall.execute().use {
                 check(it.isSuccessful) { "Inference failed (HTTP ${it.code}). Check connectivity, reconnect, or review ChatGPT plan limits. No retry or paid fallback was used." }
-                ResponseStream.read(it.body!!.charStream().buffered())
+                ResponseStream.read(it.body!!.charStream().buffered(), onDelta)
             }
         } finally { call = null }
     }

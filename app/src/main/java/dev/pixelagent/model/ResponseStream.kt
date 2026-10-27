@@ -6,7 +6,7 @@ import java.io.BufferedReader
 
 /** Collect only a completed response. Partial output never authorizes a local tool. */
 object ResponseStream {
-    fun read(reader: BufferedReader): JSONObject {
+    fun read(reader: BufferedReader, onDelta: (String) -> Unit = {}): JSONObject {
         val data = StringBuilder()
         var completed: JSONObject? = null
         val finishedItems = sortedMapOf<Int, JSONObject>()
@@ -20,8 +20,11 @@ object ResponseStream {
             val event = JSONObject(text)
             when (event.optString("type")) {
                 "response.output_item.done" -> finishedItems[event.getInt("output_index")] = event.getJSONObject("item")
-                "response.output_text.delta" -> textParts.getOrPut(event.optInt("output_index") to event.optInt("content_index")) { StringBuilder() }
-                    .append(event.getString("delta"))
+                "response.output_text.delta" -> {
+                    val delta = event.getString("delta")
+                    textParts.getOrPut(event.optInt("output_index") to event.optInt("content_index")) { StringBuilder() }.append(delta)
+                    onDelta(delta)
+                }
                 "response.output_text.done" -> {
                     val key = event.optInt("output_index") to event.optInt("content_index")
                     if (textParts[key].isNullOrEmpty()) textParts[key] = StringBuilder(event.getString("text"))

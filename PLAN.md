@@ -11,9 +11,7 @@ confirmed offline speech and a short locked-phone keyword/Stop trial. See
 
 Last updated: 27 October 2026 (Australia/Brisbane).
 
-**Current stage:** phase 0 complete. The feasibility lab is installed and its
-exit gate passed on the Pixel, with the measurement limits in Experiment 002.
-Full assistant functionality is not complete; phase 1 has not started.
+**Current stage:** phase 0 complete; phase 1 implementation in progress. The conversation build has been installed and launched on the Pixel, but its end-to-end device gate remains open.
 
 Use the [implementation checklist](#6-implementation-checklist) as the source of
 truth for task completion. `[x]` means the stated deliverable is complete; `[ ]`
@@ -23,9 +21,7 @@ conditions, results, failures, and dates in [the experiment log](docs/EXPERIMENT
 then update the matching task and phase status here. Keep task IDs stable as work
 progresses. A phase is complete only when its exit gate in section 4 is satisfied.
 
-**Next work:** phase 1 core conversation: connect text/push-to-talk to the selected
-provider, stream replies and local playback, and add bounded context/cancellation/
-history. Direct ChatGPT plan usage is selected for the tested personal local
+**Next work:** validate and harden the phase 1 conversation on the Pixel, including complete voice/text turns, interruption, process recreation, and latency measurements. Direct ChatGPT plan usage is selected for the tested personal local
 prototype. Counted accuracy and unplugged battery comparisons remain Phase 4
 benchmarks. See [the lab guide](docs/PHASE0.md) and Experiment 002.
 
@@ -168,7 +164,7 @@ Estimates below are engineering estimates for one developer already comfortable 
 | Phase | Status | Effort | Deliverable and exit gate |
 | --- | --- | --- | --- |
 | 0. Resolve feasibility | Complete: tested on Pixel; evidence and measurement limits in Experiment 002 | 3–5 days | Minimal APK on the actual Pixel; prove subscription auth/text/image/tool/refresh, offline STT/TTS, and a short screen-off keyword session. Record OS, account eligibility, model versions, latency, RAM, and battery observations. Select provider route explicitly. |
-| 1. Core conversation | Not started; audio scaffold exists | 1–2 weeks | Push-to-talk/text input, local speech, streamed model output, persona, cancellation, visible state, and persisted history. Survive network loss without executing phantom actions. |
+| 1. Core conversation | In progress; build and launch verified, end-to-end gate open | 1–2 weeks | Push-to-talk/text input, local speech, streamed model output, persona, cancellation, visible state, and persisted history. Survive network loss without executing phantom actions. |
 | 2. Memory and vision | Not started | 1 week | Confirm/edit/forget facts across restarts; answer about an explicitly captured image; camera resources release on cancel/background. |
 | 3. Google tools | Not started | 1–2 weeks | Search/read mail, prepare and explicitly send one test email, read a selected document, create a confirmed Drive note. Verify scopes, expired grants, account mismatch, and duplicate-send handling. |
 | 4. Hands-free sessions | Not started | 1–2 weeks | Keyword -> utterance -> reply with screen off in a user-started session; Stop works; measure false wakes, missed wakes, and incremental battery use. |
@@ -254,10 +250,12 @@ items remain open until exercised on-device.
 
 ### Phase 1 — Core conversation
 
-- [ ] **P1-01:** Add text input and connect push-to-talk transcription to the selected model provider and local speech output.
-- [ ] **P1-02:** Implement streaming replies, sentence-level playback, persona settings, and bounded conversation context.
+Implementation in progress (27 October 2026): text and push-to-talk use the selected plan provider; streamed text, queued local sentence playback, editable persona, bounded context, cancellation, and local completed history are implemented. Build, lint, JVM tests, installation and launch passed. A text conversation, immediate cancellation, offline failure, recovery with retained context, and history restoration after force-stop passed on the Pixel. The user confirmed a complete voice turn, including a successful retry after a timing-callback crash was fixed. One voice turn measured 3,194 ms to first playback; an interruption after partial output and meaningful latency distributions remain unverified. Partial spoken output can already have been heard if a stream subsequently fails. No conversation tools or automatic retries are enabled.
+
+- [x] **P1-01:** Add text input and connect push-to-talk transcription to the selected model provider and local speech output.
+- [x] **P1-02:** Implement streaming replies, sentence-level playback, persona settings, and bounded conversation context.
 - [ ] **P1-03:** Extend the controller with turn IDs, cancellation, timeouts, bounded retries/tool rounds, and network/error states.
-- [ ] **P1-04:** Persist conversation history and restore it safely after process recreation; never replay pending mutations automatically.
+- [x] **P1-04:** Persist conversation history and restore it safely after process recreation; never replay pending mutations automatically.
 - [ ] **P1-05:** Verify a complete voice/text conversation, cancellation, and network interruption on-device; record median/p95 response latency against section 4 targets.
 
 ### Phase 2 — Memory and vision
@@ -298,6 +296,6 @@ items remain open until exercised on-device.
 **Current decision:** phase 0 complete for the tested personal local prototype.
 The API 36 lab is deployed; automated checks and live account/offline speech/
 locked-keyword/basic lifecycle/network-recovery trials pass. Use direct ChatGPT
-plan usage. Proceed to phase 1 when requested; sustained accuracy/battery and
+plan usage. Phase 1 is in progress; sustained accuracy/battery and
 daily-use reliability remain later work. See Experiment 002 and `docs/PHASE0.md`
 for exact evidence and limits.

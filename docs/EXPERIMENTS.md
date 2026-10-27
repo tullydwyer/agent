@@ -225,3 +225,15 @@ errors are simulated in JVM tests; the actual account was not deliberately
 exhausted. No end-to-end conversational assistant or all-day behavior is claimed.
 
 For repeatable steps and implementation boundaries, see [the lab guide](PHASE0.md).
+
+## Experiment 003 — Phase 1 initial build and launch
+
+27 October 2026: assembled the phase 1 debug build, ran lint and JVM unit tests successfully, installed it over the existing app on the connected Pixel 7, and launched it successfully. The UI hierarchy showed the conversation, message, push-to-talk, cancellation and persona controls, with the saved account connected and model selection required. This is a startup/UI smoke test only: no end-to-end conversation, cancellation, network interruption, process-recreation or latency distribution was measured. Phase 1's exit gate remains open.
+
+Follow-up on the same date: a live text turn returned `PHASE ONE TEST`; force-stopping and relaunching restored the exchange. A second turn was cancelled immediately and displayed cancellation with no saved answer. A request while Wi-Fi and mobile data were briefly disabled reported `UnknownHostException` and discarded its partial response. Both network settings were restored and a subsequent turn correctly recalled the earlier phrase. The disconnect test did not prove a partial response had already arrived. These checks do not establish voice latency or p95.
+
+The user confirmed that a push-to-talk phrase was transcribed and its reply spoken on the first conversation build. An added latency callback subsequently caused a stack overflow at end of speech during the measured trial; the callback name collision was fixed, the app rebuilt and reinstalled, and a repeat voice trial is pending. Do not count the initial voice trial as a latency sample.
+
+The repeat voice turn after fixing the stack overflow completed and the user confirmed audible playback. The timing display still reported no samples; a missing utterance-registration step was fixed and the app rebuilt and reinstalled. That latest timing fix has not yet been exercised in a live voice trial. Phase 1 remains open until the interruption and latency measurements are completed.
+
+After registering queued utterance IDs, the user confirmed another completed voice reply. The app recorded 3,194 ms from recognizer end-of-speech callback to first local playback start. This is one sample on the connected Pixel and cannot establish a meaningful median or p95; more measured turns are required.

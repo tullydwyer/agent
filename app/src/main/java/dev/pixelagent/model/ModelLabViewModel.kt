@@ -29,7 +29,7 @@ data class ModelLabState(
 
 class ModelLabViewModel(application: Application) : AndroidViewModel(application) {
     private val auth = PlanUsageAuth(CredentialStore(application))
-    private val provider = PlanUsageProvider(auth)
+    val provider = PlanUsageProvider(auth)
     private val mutableState = MutableStateFlow(ModelLabState())
     val state = mutableState.asStateFlow()
     private var job: Job? = null

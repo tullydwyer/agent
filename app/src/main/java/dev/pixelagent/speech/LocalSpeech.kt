@@ -18,6 +18,9 @@ class LocalSpeech(
     private val onTranscript: (String) -> Unit,
     private val onNotice: (String) -> Unit,
     private val onVoice: (String?) -> Unit,
+    private val onFinalTranscript: (String) -> Unit = {},
+    private val onSpeechEnded: () -> Unit = {},
+    private val onPlaybackStart: () -> Unit = {},
 ) {
     private val appContext = context.applicationContext
     private var recognizer: SpeechRecognizer? = null
@@ -25,6 +28,7 @@ class LocalSpeech(
     private var tts: TextToSpeech? = null
     private var closed = false
     private var utteranceId: String? = null
+    private val queuedUtterances = mutableSetOf<String>()
     private var localVoiceReady = false
     val recognitionAvailable: Boolean
         get() = SpeechRecognizer.isOnDeviceRecognitionAvailable(appContext)
@@ -47,7 +51,9 @@ class LocalSpeech(
             }
         }
         tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-            override fun onStart(id: String?) = postForUtterance(id) { onState(AudioState.SPEAKING) }
+            override fun onStart(id: String?) {
+                appContext.mainExecutor.execute { if (!closed && id != null && id in queuedUtterances) { onState(AudioState.SPEAKING); onPlaybackStart(); queuedUtterances.remove(id) } }
+            }
             override fun onDone(id: String?) = postForUtterance(id) {
                 utteranceId = null
                 onState(AudioState.IDLE)
@@ -87,7 +93,7 @@ class LocalSpeech(
                 override fun onRmsChanged(rmsdB: Float) = Unit
                 override fun onBufferReceived(buffer: ByteArray?) = Unit
                 override fun onEndOfSpeech() {
-                    if (!closed && generation == recognitionGeneration) onState(AudioState.TRANSCRIBING)
+                    if (!closed && generation == recognitionGeneration) { onState(AudioState.TRANSCRIBING); onSpeechEnded() }
                 }
                 override fun onError(error: Int) {
                     if (closed || generation != recognitionGeneration) return
@@ -102,7 +108,7 @@ class LocalSpeech(
                     onTranscript(text)
                     releaseRecognizer()
                     onState(AudioState.IDLE)
-                    onNotice(if (text.isBlank()) "No speech detected. Try again." else "Transcribed locally. Model experiments run separately below.")
+                    if (text.isNotBlank()) onFinalTranscript(text) else onNotice("No speech detected. Try again.")
                 }
                 override fun onPartialResults(partialResults: Bundle?) {
                     if (closed || generation != recognitionGeneration) return
@@ -126,16 +132,17 @@ class LocalSpeech(
         }
     }
 
-    fun speak(text: String) {
-        stop()
+    fun speak(text: String, enqueue: Boolean = false) {
+        if (!enqueue) stop()
         if (!localVoiceReady) {
             onNotice("Install an offline English voice in Android text-to-speech settings, then reopen the app.")
             return
         }
         val id = java.util.UUID.randomUUID().toString()
         utteranceId = id
+        queuedUtterances.add(id)
         onState(AudioState.SPEAKING)
-        if (tts?.speak(text.take(2000), TextToSpeech.QUEUE_FLUSH, null, id) != TextToSpeech.SUCCESS) {
+        if (tts?.speak(text.take(2000), if (enqueue) TextToSpeech.QUEUE_ADD else TextToSpeech.QUEUE_FLUSH, null, id) != TextToSpeech.SUCCESS) {
             utteranceId = null
             onState(AudioState.IDLE)
             onNotice("Local speech playback could not start.")
@@ -151,6 +158,7 @@ class LocalSpeech(
 
     fun stop() {
         utteranceId = null
+        queuedUtterances.clear()
         releaseRecognizer()
         tts?.stop()
         onState(AudioState.IDLE)
