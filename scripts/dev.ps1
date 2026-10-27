@@ -1,5 +1,5 @@
 param(
-    [ValidateSet('doctor', 'build', 'install', 'run')]
+    [ValidateSet('doctor', 'build', 'install', 'run', 'measure')]
     [string]$Action = 'doctor',
     [string]$Serial
 )
@@ -47,7 +47,10 @@ try {
     }
 
     if ($Action -eq 'build') {
-        & .\gradlew.bat assembleDebug lintDebug --console=plain
+        if (-not (Test-Path -LiteralPath '.tools\keyword\assets\keyword\keywords.txt')) {
+            & (Join-Path $PSScriptRoot 'prepare-keyword.ps1')
+        }
+        & .\gradlew.bat assembleDebug lintDebug testDebugUnitTest --console=plain
         if ($LASTEXITCODE -ne 0) { throw "Build/checks failed (exit $LASTEXITCODE)." }
         return
     }
@@ -64,7 +67,20 @@ try {
     }
     if ($Serial -notin $connectedSerials) { throw 'The selected device is disconnected or not authorized.' }
 
-    if ($Action -eq 'install') {
+    if ($Action -eq 'measure') {
+        Write-Output 'Snapshot only. USB charging invalidates discharge measurements.'
+        Invoke-Adb -s $Serial shell getprop ro.product.model
+        Invoke-Adb -s $Serial shell getprop ro.build.version.release
+        Invoke-Adb -s $Serial shell getprop ro.build.version.sdk
+        Invoke-Adb -s $Serial shell getconf PAGE_SIZE
+        Invoke-Adb -s $Serial shell df -h /data
+        Invoke-Adb -s $Serial shell dumpsys battery
+        Invoke-Adb -s $Serial shell dumpsys meminfo dev.pixelagent
+        foreach ($package in @('com.google.android.tts', 'com.google.android.as', 'com.google.android.googlequicksearchbox')) {
+            Write-Output "Speech package: $package"
+            Invoke-Adb -s $Serial shell dumpsys package $package | Select-String 'versionName='
+        }
+    } elseif ($Action -eq 'install') {
         $apkPath = Join-Path $projectRoot 'app\build\outputs\apk\debug\app-debug.apk'
         if (-not (Test-Path -LiteralPath $apkPath)) { throw 'Build the APK first: .\scripts\dev.ps1 build' }
         Invoke-Adb -s $Serial install -r $apkPath

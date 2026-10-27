@@ -21,32 +21,50 @@ short utterance locally, and plays an installed offline English voice. Microphon
 access is requested when you tap **Listen to a phrase**. Audio stops when the app
 leaves the foreground. Transcript text is held in memory only.
 
-AI authentication, Gmail, Drive, camera capture, durable memory, and wake-word
-listening are not implemented yet. The model interface deliberately reports that
-it is unconfigured; this build does not simulate an AI reply.
+Phase 0 now includes a separate ChatGPT plan authentication/inference lab and a
+five-minute local keyword session with a foreground notification and Stop action.
+The keyword is **hello world**; detections increment a counter. The model lab
+tests text, a generated diagnostic image, a harmless function, and credential
+renewal. Credentials are encrypted with Android Keystore. Text/image/function
+turns, renewal, browser callback, and reconnect have passed on the Pixel account.
+The user also confirmed offline speech and a locked-phone keyword/Stop trial.
+
+The intended distribution is private source/personal use. User-started listening
+sessions are acceptable. Subscription access is the only implemented model route;
+no billable API fallback is enabled. Phase 0's feasibility gate is complete;
+see the experiment log for evidence and measurement limits. Gmail, Drive, camera capture, durable memory,
+and the complete voice-to-model conversation loop remain later phases.
 
 ### Requirements
 
-- Android Studio with Android SDK Platform 35, Build-Tools 35.0.0, and Platform-Tools.
+- Android Studio with Android SDK Platform 36, Build-Tools 35.0.0, and Platform-Tools.
 - JDK 17 or 21. The helper skips newer bundled JDKs that this Gradle baseline
   does not support (the installed Android Studio runtime is Java 25).
 - Android 12/API 31 or later; the initial target device is a stock Pixel 7.
 - Internet access for the first Gradle dependency download.
 
-Pinned build tools: Gradle 8.11.1, Android Gradle Plugin 8.9.1, Kotlin 2.1.10,
+Pinned build tools: Gradle 8.11.1, Android Gradle Plugin 8.10.1, Kotlin 2.1.10,
 Compose BOM 2025.03.00. These are a compatible baseline, not a claim to be the
 latest releases. Open the repository root in Android Studio, or use PowerShell:
 
 ```powershell
 .\scripts\dev.ps1 doctor
+.\scripts\prepare-keyword.ps1
 .\scripts\dev.ps1 build
 .\scripts\dev.ps1 install
 .\scripts\dev.ps1 run
+.\scripts\dev.ps1 measure
 ```
 
 The helper discovers the conventional Windows SDK/JDK locations. Set `ANDROID_HOME`
 and `JAVA_HOME` for custom locations. It does not edit system environment variables.
 With multiple devices, pass `-Serial <adb-serial>` to `install` and `run`.
+
+`build` runs assembly, lint, and JVM security/stream tests. Keyword preparation
+downloads pinned, checksum-verified engine/model files into ignored `.tools/`;
+the helper prepares them automatically when absent. Run it before using the
+wrapper directly. See [the Phase 0 lab guide](docs/PHASE0.md) for model versions,
+licenses, account sign-in, screen-off trials, measurements, and test limits.
 
 The standard wrapper is also available: `bash ./gradlew assembleDebug lintDebug` on
 macOS/Linux or `.\gradlew.bat assembleDebug lintDebug` on Windows. Configure your
@@ -75,6 +93,9 @@ USB connection assistant or Google's Windows USB driver. Root is not required.
    checks alone do not establish accuracy or prove an offline run succeeded.
 5. Tap **Stop audio**, or leave the app, and check that microphone use ends.
 
-Do not infer cloud authentication or wake-word feasibility from these tests.
+Cloud authentication and keyword capture have separate controls further down the
+lab screen. They do not automatically run after a speech test. Account sign-in
+and real offline speech passed in Phase 0. Instrumentation tests
+can erase app data when Gradle uninstalls test APKs; run them before signing in.
 See [PLAN.md](PLAN.md) for the implementation plan and
 [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md) for measured results and pending checks.

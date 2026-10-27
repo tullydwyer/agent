@@ -2,7 +2,6 @@ package dev.pixelagent.conversation
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
-import dev.pixelagent.model.UnconfiguredModelProvider
 import dev.pixelagent.speech.LocalSpeech
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -11,7 +10,6 @@ import kotlinx.coroutines.flow.update
 class AgentViewModel(application: Application) : AndroidViewModel(application) {
     private val mutableState = MutableStateFlow(AgentState())
     val state = mutableState.asStateFlow()
-    val model = UnconfiguredModelProvider()
     private val speech = LocalSpeech(
         context = application,
         onState = { audio -> mutableState.update { it.copy(audio = audio) } },

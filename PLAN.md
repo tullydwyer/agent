@@ -2,17 +2,18 @@
 
 Research date: 27 October 2026 (Australia/Brisbane).
 Scope: the eleven goals in `README.md`. Initial research started with goals only.
-The first Kotlin/Compose diagnostics scaffold now builds and deploys over USB to
-a stock Pixel 7 running Android 16/API 36. Local speech availability is displayed;
-offline speech trials, cloud authentication, and hands-free behavior remain to be
-validated. See `docs/EXPERIMENTS.md` for implementation evidence and pending tests.
+The API 36 Kotlin/Compose feasibility lab builds and deploys over USB to a stock
+Pixel 7. Account text/image/function turns, renewal, and reconnect passed; the user
+confirmed offline speech and a short locked-phone keyword/Stop trial. See
+`docs/EXPERIMENTS.md` for exact evidence, conditions, and remaining checks.
 
 ## Work tracking
 
 Last updated: 27 October 2026 (Australia/Brisbane).
 
-**Current stage:** phase 0, device feasibility experiments. The diagnostics app is
-installed and launches successfully. Full assistant functionality is not complete.
+**Current stage:** phase 0 complete. The feasibility lab is installed and its
+exit gate passed on the Pixel, with the measurement limits in Experiment 002.
+Full assistant functionality is not complete; phase 1 has not started.
 
 Use the [implementation checklist](#6-implementation-checklist) as the source of
 truth for task completion. `[x]` means the stated deliverable is complete; `[ ]`
@@ -22,9 +23,11 @@ conditions, results, failures, and dates in [the experiment log](docs/EXPERIMENT
 then update the matching task and phase status here. Keep task IDs stable as work
 progresses. A phase is complete only when its exit gate in section 4 is satisfied.
 
-**Next work:** validate offline speech on the Pixel (P0-12 through P0-14), resolve
-the distribution/provider decisions (P0-17), and test model authentication (P0-18).
-Upgrade the SDK/toolchain before background-audio experiments (P0-15).
+**Next work:** phase 1 core conversation: connect text/push-to-talk to the selected
+provider, stream replies and local playback, and add bounded context/cancellation/
+history. Direct ChatGPT plan usage is selected for the tested personal local
+prototype. Counted accuracy and unplugged battery comparisons remain Phase 4
+benchmarks. See [the lab guide](docs/PHASE0.md) and Experiment 002.
 
 ## 1. Feasibility verdict
 
@@ -164,7 +167,7 @@ Estimates below are engineering estimates for one developer already comfortable 
 
 | Phase | Status | Effort | Deliverable and exit gate |
 | --- | --- | --- | --- |
-| 0. Resolve feasibility | In progress: scaffold deployed; speech/model experiments pending | 3–5 days | Minimal APK on the actual Pixel; prove subscription auth/text/image/tool/refresh, offline STT/TTS, and a short screen-off keyword session. Record OS, account eligibility, model versions, latency, RAM, and battery observations. Select provider route explicitly. |
+| 0. Resolve feasibility | Complete: tested on Pixel; evidence and measurement limits in Experiment 002 | 3–5 days | Minimal APK on the actual Pixel; prove subscription auth/text/image/tool/refresh, offline STT/TTS, and a short screen-off keyword session. Record OS, account eligibility, model versions, latency, RAM, and battery observations. Select provider route explicitly. |
 | 1. Core conversation | Not started; audio scaffold exists | 1–2 weeks | Push-to-talk/text input, local speech, streamed model output, persona, cancellation, visible state, and persisted history. Survive network loss without executing phantom actions. |
 | 2. Memory and vision | Not started | 1 week | Confirm/edit/forget facts across restarts; answer about an explicitly captured image; camera resources release on cancel/background. |
 | 3. Google tools | Not started | 1–2 weeks | Search/read mail, prepare and explicitly send one test email, read a selected document, create a confirmed Drive note. Verify scopes, expired grants, account mismatch, and duplicate-send handling. |
@@ -226,17 +229,28 @@ items remain open until exercised on-device.
 - [x] **P0-09:** Implement Stop/background audio cleanup, stale callback guards, app icon, and backup/transfer exclusions.
 - [x] **P0-10:** Add and exercise PowerShell `doctor`, `build`, `install`, and `run` actions; document setup and speech-test steps in README.
 - [x] **P0-11:** Build and lint the final scaffold, install it, launch it on the Pixel, inspect the rendered diagnostics and recent startup crash logs. Result: zero lint errors, five advisory warnings; startup succeeded.
-- [ ] **P0-12:** Perform and record an actual offline TTS playback trial with Wi-Fi/mobile data disabled; confirm audible output.
-- [ ] **P0-13:** Perform and record an actual offline STT trial in the selected language; verify the transcript without cloud fallback.
-- [ ] **P0-14:** Exercise Stop, app backgrounding, microphone permission denial/revocation, and repeated speech attempts; confirm microphone release and truthful UI state.
-- [ ] **P0-15:** Upgrade compile/target SDK and compatible build dependencies for Android 16 testing; rebuild, lint, reinstall, and repeat audio lifecycle checks before background-audio work. Current baseline targets API 35.
-- [ ] **P0-16:** Record free storage, battery condition, speech/model versions where available, baseline RAM, and initial latency/battery measurements. Availability flags alone do not validate language-model downloads.
-- [ ] **P0-17:** Resolve whether the app will be open source, whether any paid API fallback is acceptable, and whether user-started wake-word sessions meet the intended usage.
-- [ ] **P0-18:** Implement the documented model-authentication experiment and verify account eligibility, browser callback, code exchange, protected credential storage, renewal, and reconnect on the phone.
-- [ ] **P0-19:** Validate completed text, image, and function-call turns through that provider; record selected model and disconnect/usage-limit behavior.
-- [ ] **P0-20:** Select and document the viable provider route explicitly. If subscription access fails, record why and obtain a decision before introducing billable access.
-- [ ] **P0-21:** Prototype a short user-started local keyword session and test with the screen locked; record initial battery/lifecycle observations. This is a feasibility spike, not the full hands-free feature.
-- [ ] **P0-22:** Review the evidence and close the phase-0 exit gate, or revise scope with the remaining limitations documented.
+- [x] **P0-12:** User confirmed audible local TTS with networking disabled on 27 October 2026 (Experiment 002).
+- [x] **P0-13:** User confirmed the offline on-device recognition/transcript trial on 27 October 2026 (Experiment 002).
+- [x] **P0-14:** Stop, listening/playback backgrounding, runtime denial, revocation during a started listening attempt, and regrant/retry exercised. AppOps recording durations ended without a running operation; UI returned to Idle. Original microphone grant/flags restored.
+- [x] **P0-15:** Upgraded compile/target SDK to 36 with AGP 8.10.1; build/lint/reinstall and repeated audio lifecycle checks passed on Android 16.
+  - [x] **P0-15a:** Compile/target API 36, AGP 8.10.1; assembly/lint and automated Pixel keyword start/screen-off/Stop check pass. Reinstalled and launched the lab.
+  - [x] **P0-15b:** User confirmed offline utterance/playback/Stop; automated and ADB/UI backgrounding, denial/revocation, and retry checks passed with the upgraded build.
+- [x] **P0-16:** Recorded storage, battery/charging condition, speech/model versions, initial RAM snapshots, and cloud round-trip latency in Experiment 002. User confirmed actual offline speech. USB charging prevents discharge conclusions; sustained battery comparison remains Phase 4.
+  - [x] **P0-16a:** Add `measure` helper; record storage, battery/charging state, page size, candidate speech package versions, and initial RAM snapshots in Experiment 002. Pin and record the keyword engine/model.
+  - [x] **P0-16b:** Record completed model timings and post-use RAM/battery observations. Speech timing distributions, peak RAM, and unplugged comparative drain remain later benchmarks.
+- [x] **P0-17:** User chose private source and accepted user-started sessions on 27 October 2026. Paid fallback is not approved; only subscription access is implemented. Private-source provider eligibility still requires confirmation under P0-18/P0-20.
+- [x] **P0-18:** Implemented and verified operational account access, browser callback/code exchange, protected storage, renewal, and reconnect on the Pixel (Experiment 002). Temporary authentication foreground service fixes browser/background callback progress.
+  - [x] **P0-18a:** Implement browser loopback OAuth/PKCE, state/nonce/signed identity checks, separate registrations, Keystore storage, serialized renewal, reconnect, and revocation. Security tests and a Pixel encrypted-storage test pass.
+  - [x] **P0-18b:** Actual account sign-in/exchange, completed inference, renewal, saved credentials across APK replacement, and reconnect passed. A killed pending sign-in requires a fresh attempt; full process-recreation hardening remains Phase 5.
+- [x] **P0-19:** Completed text/image/function turns, renewal, actual offline request failure and online recovery validated. Model/timings recorded below. Terminal usage-limit and interrupted-stream cases pass JVM tests; account allowance was not deliberately exhausted.
+  - [x] **P0-19a:** Implement catalog selection and explicit text/generated-image/namespaced-echo test controls. Stream tests reject disconnect, incomplete completion, and terminal usage failure after text.
+  - [x] **P0-19b:** `gpt-6-luna`: text 2322 ms, generated image 2571 ms, namespaced function/follow-up 6142 ms, renewed-token text 7054 ms. Single observations, not percentiles.
+  - [x] **P0-19c:** With Wi-Fi/mobile data disabled, the text trial reported `UnknownHostException` and no completion/action. Restored original networking; manual retry completed in 3705 ms. Partial-stream and terminal usage-limit failures are simulated in JVM tests; richer in-flight cancellation tests remain Phase 1.
+- [x] **P0-20:** Selected direct ChatGPT plan usage for the tested single-user local prototype after completed text/image/function/renewal/reconnect trials. No paid fallback. This is operational account evidence, not approval for a different distribution model.
+- [x] **P0-21:** Implemented the short local keyword spike. User confirmed locked-phone `hello world` detections and notification Stop/microphone release; automated screen-off/native-engine checks pass. Initial USB-charging battery observations are in Experiment 002. Accuracy rates and discharge behavior remain unmeasured.
+  - [x] **P0-21a:** Implement five-minute sherpa-onnx keyword service, offline bundled model, notification Stop, timeout, audio cleanup, and explicit restart. Pixel tests detect a prerecorded keyword and pass a five-second screen-off session/Stop trial.
+  - [x] **P0-21b:** User confirmed live locked-phone keyword/notification Stop trial; post-trial UI showed 3 detections over 16 seconds. Attempt count unknown; do not infer detection rates. Full timeout, permission-loss stress, and unplugged drain remain Phase 4/5 validation.
+- [x] **P0-22:** Reviewed Experiment 002 and closed the phase-0 feasibility gate for the personal local prototype on 27 October 2026. Provider access, offline speech, short locked keyword use, basic lifecycle/recovery and initial measurements are evidenced. No all-day reliability, accuracy-rate, peak-RAM, or battery-drain claim; phase 1 remains separate.
 
 ### Phase 1 — Core conversation
 
@@ -281,7 +295,9 @@ items remain open until exercised on-device.
 - [ ] **P5-05:** Run the representative 30-command speech trial and several days of normal usage; record failures and fix material regressions.
 - [ ] **P5-06:** Review all phase exit gates and document remaining limitations before calling the personal MVP complete. Plan public distribution separately if requested.
 
-**Current decision:** continue phase 0. The scaffold/deployment work is complete;
-offline speech trials, account-specific model access, and locked-phone keyword
-behavior remain open. No full feature or phase is marked complete solely because
-its interface or diagnostic availability flag exists.
+**Current decision:** phase 0 complete for the tested personal local prototype.
+The API 36 lab is deployed; automated checks and live account/offline speech/
+locked-keyword/basic lifecycle/network-recovery trials pass. Use direct ChatGPT
+plan usage. Proceed to phase 1 when requested; sustained accuracy/battery and
+daily-use reliability remain later work. See Experiment 002 and `docs/PHASE0.md`
+for exact evidence and limits.

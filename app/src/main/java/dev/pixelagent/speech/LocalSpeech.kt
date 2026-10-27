@@ -102,7 +102,7 @@ class LocalSpeech(
                     onTranscript(text)
                     releaseRecognizer()
                     onState(AudioState.IDLE)
-                    onNotice(if (text.isBlank()) "No speech detected. Try again." else "Transcribed locally. No AI model is connected yet.")
+                    onNotice(if (text.isBlank()) "No speech detected. Try again." else "Transcribed locally. Model experiments run separately below.")
                 }
                 override fun onPartialResults(partialResults: Bundle?) {
                     if (closed || generation != recognitionGeneration) return

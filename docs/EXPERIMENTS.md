@@ -42,8 +42,9 @@ experiments, update the target/build toolchain and rerun relevant lifecycle chec
 - [ ] Stop button, app backgrounding, microphone permission denial/revocation.
 - [ ] Calls and headset changes release/recover audio as intended.
 
-These are pending experiments, not capabilities established by an availability flag.
-The app contains no cloud model connection or wake-word engine yet.
+These were pending at the end of Experiment 001. Experiment 002 below supersedes
+the implementation/validation status; an availability flag alone is still not a
+passed trial.
 
 ## Next experiments
 
@@ -53,3 +54,174 @@ The app contains no cloud model connection or wake-word engine yet.
 
 Keep tokens, personal transcripts, email contents, and device serial numbers out of
 this log. See `PLAN.md` for the phase-0 acceptance gates.
+
+## Experiment 002: API 36, account access, offline speech, and keyword spike
+
+Date: 27 October 2026 (Australia/Brisbane). Device: same stock Pixel 7,
+Android 16/API 36, arm64-v8a, en-US, 4096-byte memory pages.
+
+### Decisions and implementation
+
+- User chose private source/personal local installation and accepted user-started
+  listening sessions. No billable API fallback was approved or introduced.
+- Compile/target SDK upgraded to 36; AGP 8.10.1, Gradle 8.11.1, Kotlin 2.1.10,
+  JDK 21, Build-Tools 35.0.0. Dependency versions are pinned, not claimed latest.
+- Implemented browser OAuth with stable host ID, dynamic registration, loopback
+  callback, PKCE, state/nonce, RS256/JWKS/issuer/audience/expiry/subject checks,
+  granted-scope enforcement, separate saved connections, renewal and revocation.
+  An atomic AES-GCM record uses Android Keystore and no-backup storage.
+- Model catalog selection and explicit text, synthetic-image, fixed-schema
+  namespaced echo, and renewal experiments use the public Responses endpoint.
+  Requests use `store:false`, `stream:true`, no automatic transport retries,
+  no paid fallback, and no mail/file access. Tool results require completion.
+- Implemented sherpa-onnx 1.12.14 with the English GigaSpeech 3.3M keyword model
+  dated 2024-01-01: int8 encoder/joiner, fp32 decoder, one CPU thread. Bundled
+  files are prepared from checksum-verified downloads; see `docs/PHASE0.md`.
+  The five-minute microphone service has a persistent Stop notification, partial
+  wake lock, native-resource cleanup, no automatic restart, and no saved audio.
+
+### Build and automated device evidence
+
+- `assembleDebug`, `lintDebug`, and JVM tests passed. Eleven JVM tests cover
+  PKCE, valid/signed and rejected identities, callback state/client binding,
+  terminal usage failure after text, incomplete/disconnected streams, and final
+  envelopes that omit already-streamed output. Zero lint errors; remaining
+  advisories concern pinned dependency updates, KTX suggestions, an Intent-related
+  false positive, and a native binding in the upstream AAR.
+- Three Pixel instrumentation tests passed, with no skipped tests: a Keystore
+  encrypted-record round trip across store instances, a known prerecorded keyword
+  decoded by the native engine, and user-visible foreground-service start followed
+  by five seconds screen-off and explicit Stop. The storage fixture uses a
+  separate test record, not account credentials.
+- The prerecorded fixture contains `LIGHT UP`; it is not evidence for live
+  `hello world` microphone accuracy. The later user trial below covers live use.
+- Excluded the unused `libonnxruntime4j_jni.so` from the APK; verified its absence
+  in the APK archive. Lint still flags the original AAR's copy for 16 KB alignment.
+  The tested phone has 4 KB pages; no 16 KB device claim is made.
+- Initial lint run hit a Windows/Gradle JAR lock; stopping idle Gradle daemons
+  allowed a fresh check. Fixed escaping in the ignored SDK `local.properties`.
+- Initial storage instrumentation fixture targeted the test package's unwritable
+  data directory; corrected it to a separate record in the target's no-backup
+  directory and reran successfully.
+- Gradle's connected-test cleanup removed the test installation. Reinstalled the
+  debug APK before sign-in. Subsequent `adb install -r` updates retained the real
+  account connection. Do not rerun uninstalling instrumentation on a signed-in
+  installation without planning for app-data loss.
+- Final checked APK installed and launched; inspected the rendered diagnostics.
+  No AndroidRuntime crash was returned in the inspected recent startup log.
+
+### Actual account/browser/provider trials
+
+User completed browser authentication. The consent page initially appeared stuck
+on a spinner; returning Pixel Agent to the foreground allowed sign-in to finish.
+This was consistent with callback work being suspended while the app was cached.
+Added a five-minute data-sync foreground service for the callback/token transfer.
+On the repeat reconnect, ADB confirmed the authentication service was foreground
+while Chrome was open. After consent, the browser reached the local completion
+page without bringing the app forward; the service ended. The **Open Pixel Agent**
+link reopened the existing activity and the validated connection was active.
+No token or authorization URL was printed to the log.
+
+The first text experiment reached completion but the initial collector relied on
+the terminal response envelope for output and displayed no text. Fixed collection
+of text deltas and finished output items, retaining the completion requirement;
+added two regression tests. The corrected build then passed:
+
+| Trial | Model slug | Observed round trip | Result |
+| --- | --- | --- | --- |
+| Fixed text prompt | `gpt-6-luna` | 2322 ms | Completed with the requested diagnostic text |
+| Generated image | `gpt-6-luna` | 2571 ms | Correctly described the red square, blue circle, relative positions, white background |
+| Namespaced `diagnostics.echo` plus follow-up | `gpt-6-luna` | 6142 ms | One exact-payload local echo after completion, followed by completed text |
+| Forced credential renewal | Same connection | Not separately timed | Renewed credentials saved successfully |
+| Text after renewal | `gpt-6-luna` | 7054 ms | Completed with the requested diagnostic text |
+| Saved-connection reconnect | Same connection | Not separately timed | Browser callback, identity check, and app-return link succeeded |
+
+These are single round-trip observations, including HTTP setup and stream
+completion; the function trial includes two requests. They are not first-token,
+end-of-speech, p50/p95, or spoken-answer latency measurements. No personal image,
+mail, document or transcript was sent. Model tests used the user's plan allowance.
+
+**Provider decision:** use direct ChatGPT plan usage for this tested single-user
+local prototype. Completed inference and renewal establish operational access for
+this account/install. They do not establish permission for a paid/hosted/public
+distribution or promise future account/model availability.
+
+### Human speech and locked-phone trials
+
+- After login was resolved, the user was instructed to disable Wi-Fi/mobile data,
+  test audible local TTS, verify an on-device transcript, and try Stop during
+  listening/playback while checking microphone release. User reported **works**.
+  Record P0-12/P0-13 and these Stop checks as passed by user observation. Expected
+  phrase, transcript, timing and attempt count were not supplied; no accuracy
+  percentage is inferred.
+- User was instructed to start the keyword session, say `hello world` with the
+  phone locked, and use the notification Stop action while checking microphone
+  release. User reported **all worked**. This establishes the short feasibility
+  trial by user observation. A later screen inspection showed 3 detections over
+  16 seconds, session stopped. The attempt count was not supplied; false-wake/miss
+  rates and all-day reliability remain unmeasured.
+- Post-trial service inspection returned no active keyword or authentication
+  foreground service. Additional lifecycle/recovery results are recorded below.
+
+### Initial measurements and limits
+
+`scripts/dev.ps1 measure` collected these snapshots, without device serials or
+account/transcript data:
+
+- `/data`: 229 GiB total; approximately 223–224 GiB free.
+- Battery reports health `2` (good). USB powered/charging throughout the measured
+  snapshots: 63% at 34.0 °C, 65% at 33.8 °C, and post-trial 78% at 33.6 °C.
+  Charge counters included 2,530,000 and post-trial 3,120,000 µAh. **These are
+  charging-condition observations, not discharge or incremental-drain results.**
+- Prior scaffold foreground PSS: 123,914 KiB. API 36 process after native-fixture
+  testing: 103,012 KiB PSS / 239,576 KiB RSS. Post interactive account/speech/keyword
+  trials: 175,746 KiB PSS / 318,428 KiB RSS. Conditions differ; these snapshots do
+  not establish peak model RAM, a leak, or an apples-to-apples memory improvement.
+- Available local voice: `en-us-x-tpf-local`.
+- Google TTS package version:
+  `googletts.google-speech-apk_20241125.02_p2.702443970`.
+- Android System Intelligence: `B.0.playstore.pixel7.738427685`.
+- Google app: `16.20.49.sa.arm64`.
+- These package versions are diagnostics candidates, not independently identified
+  on-device STT model weight/version numbers.
+
+### Final lifecycle/recovery checks and exit decision
+
+- With the final checked APK, disabled Wi-Fi and mobile data for one text trial.
+  UI reported `UnknownHostException`, no completion, and no tool execution. Both
+  network flags were restored to their original enabled values in a `finally`
+  block. A manual online retry completed on `gpt-6-luna` in 3705 ms.
+- Revoked the microphone grant, reopened the app, and tapped Listen: Android
+  displayed the runtime request. Explicit denial produced the app's declined
+  notice and Idle state. Restored the grant and successfully retried listening.
+- Started recognition then backgrounded the app: AppOps reported a completed
+  551 ms recording operation, not a running operation. Repeated listening/Stop;
+  later AppOps durations also ended, with no running record operation.
+- Revoked permission during a started listening attempt: Android terminated the
+  process/recording as expected. Regranted, relaunched, retried and stopped audio
+  without a stuck listening state. This brief test does not cover every possible
+  mid-utterance permission race.
+- Started local playback, fully backgrounded the app for two seconds, reopened it,
+  and inspected stable Idle state with Stop disabled. User's earlier test had
+  confirmed audible offline output and Stop.
+- Restored the original microphone grant and permission flags; cleared the
+  test-created `USER_FIXED` flag while retaining the original `USER_SET` and
+  sensitivity flags. AppOps mode returned to `foreground`, with an ended recording
+  duration. Removed the temporary browser debugging forward and device UI dump.
+  Account credentials remain on the phone; no running audio/auth service remains.
+- Final source build, lint and eleven JVM tests passed. The three native/storage/
+  service device tests passed earlier in this experiment; human and ADB/UI trials
+  then exercised the final installed app without uninstalling its account data.
+
+**Exit decision:** phase-0 feasibility gate passed for this personal local
+prototype. The evidence covers operational provider access, text/image/function
+completion, renewal/reconnect, actual offline speech, short locked-phone keyword
+use, basic permission/audio lifecycle recovery, and initial measurements.
+
+Full timeout/permission-loss stress, counted wake accuracy, sustained unplugged
+battery comparisons, calls/headsets, in-flight conversation cancellation, and
+multi-day reliability remain later-phase work. Partial-stream/terminal usage-limit
+errors are simulated in JVM tests; the actual account was not deliberately
+exhausted. No end-to-end conversational assistant or all-day behavior is claimed.
+
+For repeatable steps and implementation boundaries, see [the lab guide](PHASE0.md).
