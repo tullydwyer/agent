@@ -1,7 +1,8 @@
 # Pixel 7 personal AI agent: feasibility and implementation plan
 
-Research date: 27 October 2026 (Australia/Brisbane).
-Scope: the eleven goals in `README.md`. Initial research started with goals only.
+Research dates: 27–28 October 2026 (Australia/Brisbane).
+Scope: the goals in `README.md`, including standard Agent Skills and research into
+generic control of other apps without root. Initial research started with goals only.
 The API 36 Kotlin/Compose feasibility lab builds and deploys over USB to a stock
 Pixel 7. Account text/image/function turns, renewal, and reconnect passed; the user
 confirmed offline speech and a short locked-phone keyword/Stop trial. See
@@ -9,9 +10,18 @@ confirmed offline speech and a short locked-phone keyword/Stop trial. See
 
 ## Work tracking
 
-Last updated: 27 October 2026 (Australia/Brisbane).
+Last updated: 28 October 2026 (Australia/Brisbane).
 
 **Current stage:** phase 0 complete; phase 1 implementation in progress. The conversation build has been installed and launched on the Pixel, but its end-to-end device gate remains open.
+
+**User decision (28 October):** the phone and its accounts/identity are dedicated
+to the agent. Setup should be ordinary sign-in to installed apps plus one-time
+Android control permissions. Gmail, Drive, and other app workflows will be Agent
+Skills using those signed-in app sessions through a shared phone-control driver.
+Google Cloud projects, API enablement, developer OAuth registration, consent/test
+users, and incremental Google API authorization are outside the selected path.
+App control is now a required prerequisite for Gmail/Drive, with on-device
+feasibility still unproven. See [research and sources](docs/SKILLS-AND-APP-CONTROL.md).
 
 Use the [implementation checklist](#6-implementation-checklist) as the source of
 truth for task completion. `[x]` means the stated deliverable is complete; `[ ]`
@@ -22,7 +32,8 @@ then update the matching task and phase status here. Keep task IDs stable as wor
 progresses. A phase is complete only when its exit gate in section 4 is satisfied.
 
 **Next work:** validate and harden the phase 1 conversation on the Pixel, including complete voice/text turns, interruption, process recreation, and latency measurements. Direct ChatGPT plan usage is selected for the tested personal local
-prototype. Counted accuracy and unplugged battery comparisons remain Phase 4
+prototype. Then prove the shared app-control driver (P6 tasks, retained IDs)
+before implementing Gmail/Drive skills. Counted accuracy and unplugged battery comparisons remain Phase 4
 benchmarks. See [the lab guide](docs/PHASE0.md) and Experiment 002.
 
 ## 1. Feasibility verdict
@@ -41,8 +52,10 @@ Recommendation: start with a sideloaded, single-user app, push-to-talk, local sp
 | README goal | Assessment | Implementation and boundary |
 | --- | --- | --- |
 | Runs on Google Pixel 7 | Realistic | Kotlin Android app; prototype on the real phone early. |
-| Gmail | Realistic, with OAuth work | Search/read initially; compose locally and require confirmation to send. |
-| Google Drive | Realistic | Begin with selected documents and app-created files; whole-Drive search needs broader access. |
+| Gmail | Depends on app-control gate | Operate the already signed-in Gmail app through a skill; verify reading, composing, and sending on-device. No developer API setup. |
+| Google Drive | Depends on app-control gate | Operate signed-in Drive and its installed document editors through a skill; validate supported search/read/create/edit flows. |
+| Agent Skills | Realistic; required architecture | Standard `SKILL.md` packages, catalog and on-demand activation/resources; Gmail/Drive skills use shared phone-control tools. Desktop scripts require compatible runtimes. |
+| Control other Android apps without root | Required architecture; compatibility unproven | User-enabled Accessibility and supported intents operate agent-owned app sessions. Validate each supported workflow on the phone. |
 | Uses a ChatGPT subscription | Conditional, worth testing first | Official plan-usage OAuth flow for eligible open-source/local apps; API billing is an explicit fallback. |
 | Camera vision | Realistic | Camera preview and user-requested still image; cloud vision when connected. |
 | Local text-to-speech | Realistic | Installed offline Android voice, verified without network. |
@@ -85,9 +98,10 @@ Compose UI + ViewModel
         -> SpeechInput / SpeechOutput / WakeWordEngine
         -> MemoryRepository + PersonaRepository
         -> ModelProvider (plan-usage adapter or explicit API adapter)
+        -> SkillRegistry + activation/resource loading
         -> ToolDispatcher + permission/confirmation checks
-            -> GmailRepository
-            -> DriveRepository
+            -> AppControlDriver (required feasibility gate)
+                -> Signed-in Gmail / Drive / other installed apps
             -> CameraController
 ```
 
@@ -95,7 +109,36 @@ Normal turn: activation -> local transcription -> retrieve relevant local contex
 
 Keep cancellation, timeouts, maximum tool rounds, and a turn ID in the controller. Limit the initial loop to five tool rounds. Persist pending mutations separately from conversational text. A restarted process must never automatically replay a send or file update.
 
-Suggested package layout: `ui`, `conversation`, `model`, `speech`, `wakeword`, `camera`, `memory`, `google`, and `tools`. Add a backend directory only if the API fallback is selected.
+Suggested package layout: `ui`, `conversation`, `model`, `speech`, `wakeword`, `camera`, `memory`, `skills`, `appcontrol`, and `tools`. Add a backend directory only if the API fallback is selected.
+
+### Agent Skills and shared phone control
+
+Implement the open [Agent Skills format](https://agentskills.io/specification).
+Start with bundled skills, disclose their names/descriptions to the model, and
+load instructions/resources through dedicated function tools when needed. Keep
+skills separate from native capabilities and application-enforced operating
+permissions. Do not assume imported desktop scripts or tool names run on Android.
+Gmail and Drive will each have a skill package using the shared Android driver
+to operate the app sessions established by normal sign-in on the phone.
+
+The current `PlanUsageProvider.toolTrial()` proves diagnostic function transport;
+ordinary `conversation()` turns do not yet receive tools. Add a general bounded
+tool loop and skill context handling before treating skill support as complete.
+The selected provider route supports custom function tools but excludes native
+computer use and hosted connectors. Any phone-control loop must use our own
+Android driver and ordinary custom functions. Source: [provider limitations](https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations).
+
+Generic app control is a prerequisite for Google skills. Evaluate user-enabled
+Accessibility and useful supported intents on an unlocked stock Pixel, without
+root or an ongoing ADB connection. Test actual state changes, cancellation,
+permission loss, and screen changes. Existing sign-in is reused by operating the
+target app's UI; it does not expose that app's private credentials or grant API
+access to Pixel Agent. Google Play restricts autonomous Accessibility use by
+general assistants; technical feasibility is not Play eligibility. Source:
+[Accessibility policy](https://support.google.com/googleplay/android-developer/answer/10964491?hl=en).
+The [research document](docs/SKILLS-AND-APP-CONTROL.md) records the generic design,
+platform boundaries, sources, and proposed experiment; no device/vendor-specific
+integration is selected.
 
 ### Local speech and turn-taking
 
@@ -118,19 +161,37 @@ Use CameraX preview and image capture with explicit front/rear selection. Initia
 
 Attach that image to a compatible model turn; validate this on the selected subscription route separately from ordinary API vision support. Start with descriptions and reading visible text. Defer continuous video and background capture. Source: [image input guidance](https://developers.openai.com/api/docs/guides/images-vision).
 
-### Google authorization and integrations
+### Agent-owned phone identity and signed-in apps
 
-Create a Google Cloud project, enable Gmail and Drive APIs, configure consent/test users, and register the Android package/signing certificate. Use Google Identity Services `AuthorizationClient` for incremental data authorization; Google authentication and API authorization are separate flows. Source: [Android authorization](https://developer.android.com/identity/authorization).
+The user signs in normally to Gmail, Drive, document editors, and other desired
+apps on the dedicated agent phone. The agent then uses those apps through the
+shared phone-control tools and app-specific skills. Enable Android Accessibility
+and any other required system control access once during onboarding. App
+accounts remain signed in through their normal sessions; login expiry, MFA, and
+system permission prompts may require the user's intervention.
 
-**Gmail:** start with `gmail.readonly` for search/read and request `gmail.send` only when sending is introduced. Read access is restricted; sending is sensitive. Compose drafts locally at first, avoiding a broader draft-management scope. Fetch bounded results and decode message MIME content; do not mirror the entire mailbox. Source: [Gmail scopes](https://developers.google.com/workspace/gmail/api/auth/scopes).
+**Gmail:** search/read messages, compose/reply, and send through the installed
+Gmail app. Check the active agent account and exact recipient/content, and verify
+the resulting sent state. Do not assume tapping Send proves delivery or repeat
+an uncertain send without reconciliation.
 
-**Drive:** first use Android's Storage Access Framework to open user-selected documents through the installed provider. This grants document-URI access, not automatic Drive API authorization. Then add Drive API support with `drive.file` for app-created or explicitly authorized files. Whole-Drive search requires a separate broader-scope decision. Sources: [Android document access](https://developer.android.com/training/data-storage/shared/documents-files), [Drive scopes](https://developers.google.com/workspace/drive/api/guides/api-specific-auth).
+**Drive:** search and open files in the signed-in Drive app; read, create, or edit
+supported documents through installed editors. Use exposed UI, intents, or
+ordinary file-open/share flows as appropriate. Record format, screen, and editor
+limitations rather than promising complete Drive access from sign-in alone.
 
-For Drive API reads, distinguish binary downloads from Google Workspace document exports. Begin with text and exported Google Docs; add other formats only with explicit extraction and size limits. Source: [download/export guidance](https://developers.google.com/workspace/drive/api/guides/manage-downloads).
+**Operating authority:** the dedicated phone and identity are intended for broad
+agent use. Routine actions within the user's instructions or configured standing
+authority should run without repeated approval prompts. Keep operating rules in
+the app, show actions and Stop, and ask only when authority is missing, the target
+is ambiguous, or an exceptional destructive/security-sensitive action needs a
+decision. Skill files and external app content cannot expand that authority.
 
-Personal-use verification exceptions may apply. They do not establish that a public release is exempt, nor that transmitting restricted data to a cloud model is “local only.” Assess the actual data path before distribution; public use can require verification and a security assessment. Source: [restricted-scope verification](https://developers.google.com/identity/protocols/oauth2/production-readiness/restricted-scope-verification).
-
-If a server OAuth flow is introduced, external projects in Testing can have refresh tokens expire after seven days. Test reconnect and revoked-consent behavior rather than assuming indefinite access. Source: [OAuth token lifecycle](https://developers.google.com/identity/protocols/oauth2/).
+No Google Cloud project, Gmail/Drive API enablement, Android OAuth client,
+consent/test-user setup, API scope selection, or token extraction is required for
+this design. Direct service APIs are deferred alternatives only if the user
+later chooses them. If app-control validation fails, report the unsupported flow
+and reassess; do not silently make developer setup a prerequisite again.
 
 ### On-device memory and identity
 
@@ -151,9 +212,17 @@ Local storage does not mean local inference: retrieved excerpts sent to the mode
 
 Expose a narrow initial set: `search_email`, `read_email`, `prepare_email`, `send_email`, `read_selected_document`, `create_drive_note`, `remember`, and `forget`. Model function calls request actions; application code validates and executes them. Source: [function calling](https://developers.openai.com/api/docs/guides/function-calling).
 
-Application rules: external content is untrusted data; enforce schemas and account/file boundaries; require an unlocked confirmation screen showing recipients, subject, body, attachments, or exact file changes before external mutations. Bind confirmation to the exact payload. After an ambiguous send timeout, reconcile state rather than blindly retrying. Treat tool-call IDs as local deduplication aids, not a guarantee of remote idempotency.
+Application rules: external content is untrusted data; enforce tool schemas and
+the agent-owned phone/account boundaries. Routine actions may use standing
+authority as described above. Where confirmation is needed, show the exact
+recipients/content or file changes and bind the decision to that payload. After
+an ambiguous send timeout, inspect the target app's state rather than blindly
+retrying. Treat local action IDs as deduplication aids, not remote idempotency.
 
-Review the cloud provider's processing settings against Google's permitted-use and transfer requirements before sending mailbox/document content. Disclose transfers, honor deletion, and do not use Workspace data to train a general model. Source: [Workspace developer policy](https://developers.google.com/workspace/workspace-api-user-data-developer-policy).
+Document that screen text and images sent to the reasoning model leave the phone.
+Bound captured content and retention; keep passwords and authentication codes out
+of skill files, logs, and normal model context. This app-session design does not
+depend on Google Workspace API verification or a developer consent screen.
 
 Show `Idle`, `Wake word enabled`, `Listening`, `Transcribing locally`, `Thinking online`, `Using Gmail/Drive`, `Awaiting confirmation`, `Speaking`, and `Camera active` from actual controller state. Show offline/error states, cancel controls, connected accounts, and pending actions. Locked-phone mode must withhold private mail readout and mutations until unlock.
 
@@ -164,13 +233,18 @@ Estimates below are engineering estimates for one developer already comfortable 
 | Phase | Status | Effort | Deliverable and exit gate |
 | --- | --- | --- | --- |
 | 0. Resolve feasibility | Complete: tested on Pixel; evidence and measurement limits in Experiment 002 | 3–5 days | Minimal APK on the actual Pixel; prove subscription auth/text/image/tool/refresh, offline STT/TTS, and a short screen-off keyword session. Record OS, account eligibility, model versions, latency, RAM, and battery observations. Select provider route explicitly. |
-| 1. Core conversation | In progress; build and launch verified, end-to-end gate open | 1–2 weeks | Push-to-talk/text input, local speech, streamed model output, persona, cancellation, visible state, and persisted history. Survive network loss without executing phantom actions. |
+| 1. Core conversation and skills | In progress; build and launch verified, end-to-end and skill gates open | 1–2 weeks baseline; skill runtime adds unestimated work | Push-to-talk/text input, local speech, streaming, persona, cancellation, history, standard skill discovery/activation/resources, and a bounded tool loop. Survive network loss without executing phantom actions. |
+| App-control prerequisite (P6 task IDs retained) | Research only; required before phase 3 | Unestimated | On a stock Pixel, demonstrate observe/action/verify in a harmless app without root or ongoing ADB, then validate signed-in Gmail/Drive sessions and required Android permissions. |
 | 2. Memory and vision | Not started | 1 week | Confirm/edit/forget facts across restarts; answer about an explicitly captured image; camera resources release on cancel/background. |
-| 3. Google tools | Not started | 1–2 weeks | Search/read mail, prepare and explicitly send one test email, read a selected document, create a confirmed Drive note. Verify scopes, expired grants, account mismatch, and duplicate-send handling. |
+| 3. Signed-in app skills | Not started; depends on app-control prerequisite | Re-estimate after UI-control spike | Gmail and Drive skills operate signed-in apps. Search/read mail, send one test email under operating authority, read a document, and create a Drive note. Verify session expiry, account identity, changed UI, cancellation, and duplicate-action handling. |
 | 4. Hands-free sessions | Not started | 1–2 weeks | Keyword -> utterance -> reply with screen off in a user-started session; Stop works; measure false wakes, missed wakes, and incremental battery use. |
 | 5. Daily-use hardening | Not started | 1–2 weeks | Lock-screen privacy, calls/headsets, process recreation, deletion/export, permission changes, bounded storage, and several days of real use. |
 
-Allow roughly **6–10 weeks** for a personal MVP with contingency; several months is more realistic when learning Android alongside the project. A public app needs a separate release plan for verification, policy review, distribution requirements, support, and account/backend operations.
+The original **6–10 week** personal-MVP estimate predates the skill runtime and
+required UI-control route; re-estimate after their spikes. Several months is
+more realistic when learning Android alongside the project. A public app needs a
+separate release plan for verification, policy review, distribution requirements,
+support, and account/backend operations.
 
 ### Measurements to make the decision concrete
 
@@ -182,7 +256,7 @@ These are proposed acceptance targets, not advertised performance:
 - Wake word: at least 45/50 intended detections in the tested setting and at most one false activation during eight hours of representative ambient audio. Repeat with TV/music and the screen locked.
 - Battery: target less than five percentage points of additional drain over an eight-hour idle baseline for wake listening. Compare repeated runs on the same phone, network, and screen conditions; reduce session duration if unacceptable.
 - Reliability: permission loss, service termination, reboot, and network changes produce honest UI state and an explicit restart path. No claim of all-day reliability before an actual all-day test.
-- Actions: one confirmed test send produces exactly one message; cancellation, replay, injected instructions in mail, and interrupted streams produce no unintended mutation.
+- Actions: one authorized test send produces exactly one message; cancellation, replay, injected instructions in mail/screens, and interrupted streams produce no unintended mutation. Routine actions under standing authority do not require repeated approval.
 - Memory: a confirmed fact survives restart; forgetting it removes the fact and derived retrieval content from subsequent prompts.
 
 ## 5. Cost and scope controls
@@ -203,7 +277,10 @@ For planning, 50 turns/day at 2,000 input and 250 output tokens/turn means about
 
 Use a locally enforced daily request/token budget, bounded context, and backend enforcement if a backend exists. Keep retries bounded. No automatic switch from subscription to billable API access. Local speech eliminates a cloud speech dependency, but models, licensing, storage, and device battery still have costs.
 
-Defer continuous video, autonomous sending/deletion, whole-account indexing, fully local general reasoning, background inbox monitoring, and hardware hotword integration. These can be reconsidered using measurements from the MVP.
+Defer continuous video, unrestricted permanent deletion, whole-account indexing,
+fully local general reasoning, background inbox monitoring, and hardware hotword
+integration. Routine sending within user instructions/standing authority is in
+scope after the signed-in app workflow passes its gate.
 
 ## 6. Implementation checklist
 
@@ -257,6 +334,9 @@ Implementation in progress (27 October 2026): text and push-to-talk use the sele
 - [ ] **P1-03:** Extend the controller with turn IDs, cancellation, timeouts, bounded retries/tool rounds, and network/error states.
 - [x] **P1-04:** Persist conversation history and restore it safely after process recreation; never replay pending mutations automatically.
 - [ ] **P1-05:** Verify a complete voice/text conversation, cancellation, and network interruption on-device; record median/p95 response latency against section 4 targets.
+- [ ] **P1-06:** Implement standard Agent Skills parsing/catalog, bundled discovery, explicit/model-selected activation, bounded resource reads, and active-skill context restoration; surface incompatible runtime requirements.
+- [ ] **P1-07:** Extend normal model conversations with namespaced tools, bounded tool rounds, validated arguments/results, cancellation, and application-enforced permissions; diagnostic transport alone is insufficient.
+- [ ] **P1-08:** Validate skill activation/resource loading through real model turns on the Pixel; exercise malformed/incompatible skills, missing resources, traversal attempts, permission denial, cancellation, and context rebuilding without action replay.
 
 ### Phase 2 — Memory and vision
 
@@ -266,15 +346,21 @@ Implementation in progress (27 October 2026): text and push-to-talk use the sele
 - [ ] **P2-04:** Add CameraX preview, front/rear selection, explicit snapshot capture, resize, temporary-file cleanup, and visible camera/upload state.
 - [ ] **P2-05:** Verify an answer about a user-captured image through the selected provider; confirm cancel/background releases the camera and uploaded context is clear to the user.
 
-### Phase 3 — Gmail and Drive tools
+### Phase 3 — Gmail and Drive skills using signed-in apps
 
-- [ ] **P3-01:** Configure the Google Cloud project, APIs, Android OAuth registration, consent/test users, and incremental authorization.
-- [ ] **P3-02:** Implement bounded Gmail search/read with MIME extraction and local email preparation using the minimum required scopes.
-- [ ] **P3-03:** Implement selected-document access through Android's document picker, then scoped Drive API access and Google Docs export as needed.
-- [ ] **P3-04:** Add schema-validated tool dispatch, account/file boundaries, untrusted-content handling, and an exact-payload confirmation screen for mutations.
-- [ ] **P3-05:** Implement confirmed Gmail sending and Drive note creation, including interrupted-send reconciliation and local deduplication.
-- [ ] **P3-06:** Verify read tools, one confirmed test email, and one confirmed Drive note; test cancellation, expired/revoked grants, account mismatch, injected instructions, and ambiguous timeouts.
-- [ ] **P3-07:** Document the actual Google-data/cloud-model path, required disclosures, permitted use, and any verification/security-assessment requirements for the intended distribution.
+Prerequisite: complete the app-control feasibility tasks P6-01 through P6-04.
+The P3 IDs are retained; their previous developer-API/OAuth deliverables are
+superseded by the user's signed-in-phone decision on 28 October 2026.
+
+- [ ] **P3-01:** Sign in normally to Gmail, Drive, and required editor/other apps on the dedicated agent phone using its agent-owned identity; enable required Android app-control permissions once. No Google Cloud/API/OAuth developer setup.
+- [ ] **P3-02:** Implement Gmail skill workflows for bounded search/read, compose, and reply through the signed-in Gmail UI using shared phone-control tools.
+- [ ] **P3-03:** Implement Drive skill workflows for search/open/read and supported document creation/editing through signed-in Drive/editors and ordinary file-open/share flows.
+- [ ] **P3-04:** Enforce schema-validated dispatch, active account/target checks, external-content handling, and standing operating authority; request exact-action confirmation only when the action requires a new decision.
+- [ ] **P3-05:** Implement authorized Gmail sending and Drive note creation through app UI, with resulting-state verification, interrupted-action reconciliation, and local deduplication.
+- [ ] **P3-06:** Verify read tools, one authorized test email, and one Drive note; test cancellation, signed-out/expired sessions, revoked Accessibility access, account mismatch, changed UI, injected instructions, and ambiguous outcomes.
+- [ ] **P3-07:** Document normal sign-in and one-time Android permission setup, screen-content/cloud-model transfer, observed app/version compatibility, and remaining limits for this personal sideloaded phone.
+- [ ] **P3-08:** Author standard Gmail and Google Drive skills using shared phone-control tools, supported UI flows, agent-account expectations, and operating authority; keep credentials out of skill files/context.
+- [ ] **P3-09:** Verify each skill through real model turns and the signed-in target app; enforce standing-authority boundaries and required confirmations without prompting again for already-authorized routine actions.
 
 ### Phase 4 — Hands-free sessions
 
@@ -292,6 +378,17 @@ Implementation in progress (27 October 2026): text and push-to-talk use the sele
 - [ ] **P5-04:** Add/enforce daily request/token budgets and bounded context; test exhaustion without automatic billable fallback.
 - [ ] **P5-05:** Run the representative 30-command speech trial and several days of normal usage; record failures and fix material regressions.
 - [ ] **P5-06:** Review all phase exit gates and document remaining limitations before calling the personal MVP complete. Plan public distribution separately if requested.
+
+### App-control prerequisite — generic control without root (P6 IDs retained)
+
+These tasks now precede phase 3; they are required infrastructure for the chosen
+signed-in-app architecture, not a post-MVP optional extension. Compatibility
+remains a measured feasibility gate.
+
+- [ ] **P6-01:** Build a generic Accessibility-driver spike with user setup, package allowlisting, inspect/click/type/scroll/navigation, bounded steps, and visible Stop; prefer supported APIs/intents when available.
+- [ ] **P6-02:** Demonstrate observe/action/verify on a harmless test app using the stock Pixel, with no root and no ongoing ADB connection. Record OS, package/version, permissions, and actual resulting state.
+- [ ] **P6-03:** Exercise service/permission loss, process recreation, lock, unavailable/changed nodes, protected content, cancellation, and ambiguous results; stop safely and never automatically replay pending actions.
+- [ ] **P6-04:** Define reusable Android capabilities versus per-app skills; validate entry/account detection for signed-in Gmail and Drive, document session/technical/distribution limits, and decide whether the phase-3 UI workflows can proceed. No smart-device/vendor-specific integration is committed.
 
 **Current decision:** phase 0 complete for the tested personal local prototype.
 The API 36 lab is deployed; automated checks and live account/offline speech/

@@ -4,6 +4,9 @@
 - AI Agent that runs on a google pixel 7 phone.
 - Supports email (gmail).
 - Supports google drive.
+- Supports the open [Agent Skills](https://agentskills.io/home) format, with Gmail and Drive workflows using shared phone-control tools to operate signed-in apps.
+- Controls installed apps on a stock phone without rooting, through user-enabled UI automation and supported intents; compatibility must be verified per workflow.
+- Uses a phone and identity dedicated to the agent: sign in normally to desired apps and enable Android control permissions once, with routine operation under standing authority. No Google Cloud/API/OAuth developer setup is required for Gmail or Drive.
 - Consumes AI from a ChatGPT subscription.
 - Supports vision via cameras.
 - Supports text to speech (running locally).
@@ -34,6 +37,9 @@ sessions are acceptable. Subscription access is the only implemented model route
 no billable API fallback is enabled. Phase 0's feasibility gate is complete;
 see the experiment log for evidence and measurement limits. Gmail, Drive, camera capture, durable memory,
 and the complete voice-to-model conversation loop remain later phases.
+Skill loading and generic app control are also unimplemented. See the
+[skills and app-control research](docs/SKILLS-AND-APP-CONTROL.md) for the proposed
+runtime, compatibility limits, and root-free Android control options.
 
 ### Requirements
 
