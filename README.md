@@ -1,6 +1,6 @@
 # agent
 
-## Goals
+## Project Goals
 - AI Agent that runs on a google pixel 7 phone.
 - Supports email (gmail).
 - Supports google drive.
