@@ -19,11 +19,16 @@
 
 ## Development
 
-The initial native Kotlin/Jetpack Compose app is a device diagnostics lab. It
-reports the Android version and on-device speech availability, transcribes a
-short utterance locally, and plays an installed offline English voice. Microphone
-access is requested when you tap **Listen to a phrase**. Audio stops when the app
-leaves the foreground. Transcript text is held in memory only.
+The native Kotlin/Jetpack Compose app supports text and push-to-talk conversations,
+streaming replies, local sentence playback, an editable persona, completed history,
+and bundled Agent Skills. It also retains the device diagnostics lab. Microphone
+access is requested when starting recognition; audio stops when the app leaves
+the foreground. Completed conversations and persona are saved on the phone.
+
+Speech recognition/playback, skill loading and storage run locally. AI reasoning
+runs online through the signed-in ChatGPT subscription: prompts, recent history,
+persona and relevant skill instructions/resources are sent to OpenAI. This is not
+an offline reasoning model. Speech-test transcripts are not uploaded automatically.
 
 Phase 0 now includes a separate ChatGPT plan authentication/inference lab and a
 five-minute local keyword session with a foreground notification and Stop action.
@@ -36,11 +41,13 @@ The user also confirmed offline speech and a locked-phone keyword/Stop trial.
 The intended distribution is private source/personal use. User-started listening
 sessions are acceptable. Subscription access is the only implemented model route;
 no billable API fallback is enabled. Phase 0's feasibility gate is complete;
-see the experiment log for evidence and measurement limits. Gmail, Drive, camera capture, durable memory,
-and the complete voice-to-model conversation loop remain later phases.
-Skill loading and generic app control are also unimplemented. See the
-[skills and app-control research](docs/SKILLS-AND-APP-CONTROL.md) for the proposed
-runtime, compatibility limits, and root-free Android control options.
+see the experiment log for evidence and measurement limits. Phase 1 implementation
+adds a bounded conversation/tool controller, standard skill catalog and resource
+loading, explicit activation, permission controls, and safe context restoration.
+Its voice latency distribution still needs measurement. See [the Phase 1 guide](docs/PHASE1.md).
+Gmail, Drive, camera capture, durable factual memory, and generic app control remain
+later work. See the [skills and app-control research](docs/SKILLS-AND-APP-CONTROL.md)
+for compatibility limits and root-free Android control options.
 
 ### Requirements
 
@@ -67,11 +74,16 @@ The helper discovers the conventional Windows SDK/JDK locations. Set `ANDROID_HO
 and `JAVA_HOME` for custom locations. It does not edit system environment variables.
 With multiple devices, pass `-Serial <adb-serial>` to `install` and `run`.
 
-`build` runs assembly, lint, and JVM security/stream tests. Keyword preparation
+`build` runs assembly, lint, and JVM security/stream/conversation/skill tests. Keyword preparation
 downloads pinned, checksum-verified engine/model files into ignored `.tools/`;
 the helper prepares them automatically when absent. Run it before using the
 wrapper directly. See [the Phase 0 lab guide](docs/PHASE0.md) for model versions,
 licenses, account sign-in, screen-off trials, measurements, and test limits.
+
+Use `.\scripts\dev.ps1 test-phase1` for offline Pixel tests that retain the signed-in
+installation. Adding `-LiveModel <account-model-slug>` explicitly enables live
+synthetic model trials and a temporary network interruption/restoration test.
+See [the Phase 1 guide](docs/PHASE1.md) before running the live suite.
 
 The standard wrapper is also available: `bash ./gradlew assembleDebug lintDebug` on
 macOS/Linux or `.\gradlew.bat assembleDebug lintDebug` on Windows. Configure your

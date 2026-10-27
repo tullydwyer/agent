@@ -12,7 +12,7 @@ confirmed offline speech and a short locked-phone keyword/Stop trial. See
 
 Last updated: 28 October 2026 (Australia/Brisbane).
 
-**Current stage:** phase 0 complete; phase 1 implementation in progress. The conversation build has been installed and launched on the Pixel, but its end-to-end device gate remains open.
+**Current stage:** phase 0 complete; phase 1 code implemented, with voice latency validation still open. The conversation/skill build is installed on the Pixel; implementation completion does not close the remaining measurement gate.
 
 **User decision (28 October):** the phone and its accounts/identity are dedicated
 to the agent. Setup should be ordinary sign-in to installed apps plus one-time
@@ -31,7 +31,7 @@ conditions, results, failures, and dates in [the experiment log](docs/EXPERIMENT
 then update the matching task and phase status here. Keep task IDs stable as work
 progresses. A phase is complete only when its exit gate in section 4 is satisfied.
 
-**Next work:** validate and harden the phase 1 conversation on the Pixel, including complete voice/text turns, interruption, process recreation, and latency measurements. Direct ChatGPT plan usage is selected for the tested personal local
+**Next work:** finish the phase 1 voice-turn latency distribution and playback/Stop trial on the Pixel. See [the Phase 1 guide](docs/PHASE1.md) and Experiment 004 for controller/skill checks and exact remaining evidence. Direct ChatGPT plan usage is selected for the tested personal local
 prototype. Then prove the shared app-control driver (P6 tasks, retained IDs)
 before implementing Gmail/Drive skills. Counted accuracy and unplugged battery comparisons remain Phase 4
 benchmarks. See [the lab guide](docs/PHASE0.md) and Experiment 002.
@@ -121,9 +121,10 @@ permissions. Do not assume imported desktop scripts or tool names run on Android
 Gmail and Drive will each have a skill package using the shared Android driver
 to operate the app sessions established by normal sign-in on the phone.
 
-The current `PlanUsageProvider.toolTrial()` proves diagnostic function transport;
-ordinary `conversation()` turns do not yet receive tools. Add a general bounded
-tool loop and skill context handling before treating skill support as complete.
+Normal conversation now uses `ConversationController` and the provider's `complete()`
+adapter with namespaced skill tools, bounded rounds/calls, validated dispatch,
+native permissions and restored skill context. `toolTrial()` remains a separate
+diagnostic, not the conversation runtime. See Experiment 004 and `docs/PHASE1.md`.
 The selected provider route supports custom function tools but excludes native
 computer use and hosted connectors. Any phone-control loop must use our own
 Android driver and ordinary custom functions. Source: [provider limitations](https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations).
@@ -233,7 +234,7 @@ Estimates below are engineering estimates for one developer already comfortable 
 | Phase | Status | Effort | Deliverable and exit gate |
 | --- | --- | --- | --- |
 | 0. Resolve feasibility | Complete: tested on Pixel; evidence and measurement limits in Experiment 002 | 3–5 days | Minimal APK on the actual Pixel; prove subscription auth/text/image/tool/refresh, offline STT/TTS, and a short screen-off keyword session. Record OS, account eligibility, model versions, latency, RAM, and battery observations. Select provider route explicitly. |
-| 1. Core conversation and skills | In progress; build and launch verified, end-to-end and skill gates open | 1–2 weeks baseline; skill runtime adds unestimated work | Push-to-talk/text input, local speech, streaming, persona, cancellation, history, standard skill discovery/activation/resources, and a bounded tool loop. Survive network loss without executing phantom actions. |
+| 1. Core conversation and skills | Code implemented; voice latency distribution gate open | 1–2 weeks baseline; skill runtime adds unestimated work | Push-to-talk/text input, local speech, streaming, persona, cancellation, history, standard skill discovery/activation/resources, and a bounded tool loop. Survive network loss without executing phantom actions. |
 | App-control prerequisite (P6 task IDs retained) | Research only; required before phase 3 | Unestimated | On a stock Pixel, demonstrate observe/action/verify in a harmless app without root or ongoing ADB, then validate signed-in Gmail/Drive sessions and required Android permissions. |
 | 2. Memory and vision | Not started | 1 week | Confirm/edit/forget facts across restarts; answer about an explicitly captured image; camera resources release on cancel/background. |
 | 3. Signed-in app skills | Not started; depends on app-control prerequisite | Re-estimate after UI-control spike | Gmail and Drive skills operate signed-in apps. Search/read mail, send one test email under operating authority, read a document, and create a Drive note. Verify session expiry, account identity, changed UI, cancellation, and duplicate-action handling. |
@@ -327,16 +328,16 @@ items remain open until exercised on-device.
 
 ### Phase 1 — Core conversation
 
-Implementation in progress (27 October 2026): text and push-to-talk use the selected plan provider; streamed text, queued local sentence playback, editable persona, bounded context, cancellation, and local completed history are implemented. Build, lint, JVM tests, installation and launch passed. A text conversation, immediate cancellation, offline failure, recovery with retained context, and history restoration after force-stop passed on the Pixel. The user confirmed a complete voice turn, including a successful retry after a timing-callback crash was fixed. One voice turn measured 3,194 ms to first playback; an interruption after partial output and meaningful latency distributions remain unverified. Partial spoken output can already have been heard if a stream subsequently fails. No conversation tools or automatic retries are enabled.
+Implementation updated 28 October 2026: text/push-to-talk, streaming local sentence playback, persona, bounded history, reliable turn cancellation, a whole-turn timeout, and explicit network/account/error states are implemented. Normal conversations now support namespaced skill activation/resource tools with five tool rounds, twelve calls, schema checks, native permissions and context restoration. Two instruction-only skills are bundled; unsupported script runtimes remain unavailable. Automatic inference retries are bounded to zero, requiring an explicit retry after interruption. Prior Pixel text/voice/history evidence remains in Experiment 003; current controller/skill evidence is in Experiment 004. Partial spoken output may already have been heard if a stream later fails. A meaningful voice latency distribution remains outstanding; the earlier single 3,194 ms observation is insufficient.
 
 - [x] **P1-01:** Add text input and connect push-to-talk transcription to the selected model provider and local speech output.
 - [x] **P1-02:** Implement streaming replies, sentence-level playback, persona settings, and bounded conversation context.
-- [ ] **P1-03:** Extend the controller with turn IDs, cancellation, timeouts, bounded retries/tool rounds, and network/error states.
+- [x] **P1-03:** Extend the controller with turn IDs, cancellation, timeouts, bounded retries/tool rounds, and network/error states. Whole-turn timeout 90 seconds; five tool rounds/twelve calls; zero automatic inference retries. Cancellation invalidates stale callbacks and cancels HTTP/audio without resetting a newer turn.
 - [x] **P1-04:** Persist conversation history and restore it safely after process recreation; never replay pending mutations automatically.
 - [ ] **P1-05:** Verify a complete voice/text conversation, cancellation, and network interruption on-device; record median/p95 response latency against section 4 targets.
-- [ ] **P1-06:** Implement standard Agent Skills parsing/catalog, bundled discovery, explicit/model-selected activation, bounded resource reads, and active-skill context restoration; surface incompatible runtime requirements.
-- [ ] **P1-07:** Extend normal model conversations with namespaced tools, bounded tool rounds, validated arguments/results, cancellation, and application-enforced permissions; diagnostic transport alone is insufficient.
-- [ ] **P1-08:** Validate skill activation/resource loading through real model turns on the Pixel; exercise malformed/incompatible skills, missing resources, traversal attempts, permission denial, cancellation, and context rebuilding without action replay.
+- [x] **P1-06:** Implement standard Agent Skills parsing/catalog, bundled discovery, explicit/model-selected activation, bounded resource reads, and active-skill context restoration; surface incompatible runtime requirements. Safe YAML and APK assets; deliberate imports/script execution remain unsupported.
+- [x] **P1-07:** Extend normal model conversations with namespaced tools, bounded tool rounds, validated arguments/results, cancellation, and application-enforced permissions; diagnostic transport alone is insufficient. Normal turns use `skills.activate` and `skills.read_resource`; `allowed-tools` cannot grant native permissions.
+- [x] **P1-08:** Validate skill activation/resource loading through real model turns on the Pixel; exercise malformed/incompatible skills, missing resources, traversal attempts, permission denial, cancellation, and context rebuilding without action replay. Live activation/resource/restored-context and denied-tool turns passed; offline device/JVM tests exercise malformed packages, bounds and no replay. See Experiment 004.
 
 ### Phase 2 — Memory and vision
 

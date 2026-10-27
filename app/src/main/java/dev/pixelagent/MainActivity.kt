@@ -81,17 +81,18 @@ class MainActivity : ComponentActivity() {
                         item {
                             LabCard("Status") {
                                 Text(state.audio.label, style = MaterialTheme.typography.titleLarge)
-                                if (state.busy) Text("Thinking online")
+                                Text(state.turnStatus.label)
                                 if (cloud.busy) Text("Online model experiment in progress")
                                 Text(state.notice)
                                 Text(state.latency)
+                                Text(state.textLatency)
                                 Text("Camera off · Keyword ${if (keyword.active) "active" else "off"} · ${cloud.connection}")
                             }
                         }
                         item {
                             LabCard("Conversation") {
                                 var draft by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf("") }
-                                Text("Messages and persona are stored on this phone and sent to the selected model as context.")
+                                Text("Speech and storage run on this phone. ChatGPT reasoning runs online; messages, persona and relevant skill context are sent to the selected model.")
                                 state.messages.forEach { message ->
                                     SelectionContainer { Text("${if (message.role == "user") "You" else "Assistant"}: ${message.text}") }
                                 }
@@ -101,9 +102,28 @@ class MainActivity : ComponentActivity() {
                                 Button(onClick = {
                                     if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) agent.listen(modelLab.provider)
                                     else microphonePermission.launch(Manifest.permission.RECORD_AUDIO)
-                                }, enabled = !state.busy && !cloud.busy && !keyword.active && cloud.selectedModel != null && state.localRecognitionAvailable) { Text("Push to talk") }
+                                }, enabled = !state.busy && state.audio == AudioState.IDLE && !cloud.busy && !keyword.active && cloud.selectedModel != null && state.localRecognitionAvailable) { Text("Push to talk") }
                                 OutlinedButton(onClick = agent::cancel, enabled = state.busy || state.audio != AudioState.IDLE) { Text("Stop / cancel") }
                                 OutlinedTextField(value = state.persona, onValueChange = agent::setPersona, label = { Text("Assistant persona") }, modifier = Modifier.fillMaxWidth())
+                            }
+                        }
+
+                        item {
+                            LabCard("Agent Skills") {
+                                Text("Bundled instructions and resources can be selected here or loaded by the assistant. Active skills are restored on this phone.")
+                                OutlinedButton(onClick = { agent.setSkillsAllowed(!state.skillsAllowed) }) {
+                                    Text(if (state.skillsAllowed) "Disable skill loading" else "Enable skill loading")
+                                }
+                                state.skillCatalog.forEach { skill ->
+                                    Text("${skill.name}: ${skill.description}")
+                                    if (skill.unavailable != null) Text("Unavailable: ${skill.unavailable}")
+                                    OutlinedButton(onClick = { agent.toggleSkill(skill.name) }, enabled = !state.busy && state.skillsAllowed && skill.unavailable == null) {
+                                        Text("${if (skill.name in state.activeSkills) "Deactivate" else "Activate"} ${skill.name}")
+                                    }
+                                }
+                                state.skillIssues.forEach { Text("${it.directory}: ${it.reason}") }
+                                Text("Active: ${state.activeSkills.joinToString().ifBlank { "none" }}")
+                                state.toolEvents.forEach { Text(it) }
                             }
                         }
 
@@ -202,7 +222,9 @@ class MainActivity : ComponentActivity() {
     private fun stopKeywordSession() { stopService(Intent(this, KeywordService::class.java)) }
 
     override fun onStop() {
-        if (agent.state.value.busy) agent.cancel() else agent.stopAudio()
+        if (!isChangingConfigurations) {
+            if (agent.state.value.busy) agent.cancel() else agent.stopAudio()
+        }
         super.onStop()
     }
 }

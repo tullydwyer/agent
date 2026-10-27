@@ -38,7 +38,7 @@ object ResponseStream {
                     val code = event.optJSONObject("response")?.optJSONObject("error")?.optString("code")
                         ?: event.optJSONObject("error")?.optString("code") ?: event.optString("code", "incomplete")
                     // Do not surface provider messages containing prompts or personal content.
-                    error("Model request failed: ${code.replace(Regex("[^a-zA-Z0-9_]"), "").take(100)}. No action executed.")
+                    throw ModelResponseException(code.replace(Regex("[^a-zA-Z0-9_]"), "").take(100))
                 }
             }
         }
@@ -50,7 +50,7 @@ object ResponseStream {
             else if (line.startsWith("data:")) data.append(line.substring(5).removePrefix(" ")).append('\n')
         }
         dispatch()
-        val response = completed ?: error("Stream disconnected before response.completed. No action executed.")
+        val response = completed ?: throw ModelStreamInterruptedException()
         var output = response.optJSONArray("output") ?: JSONArray()
         // Some plan-route streams omit output from the terminal envelope; completed
         // item events still contain the final message/tool arguments.
@@ -66,3 +66,6 @@ object ResponseStream {
         return response.put("output", output)
     }
 }
+
+class ModelResponseException(val code: String) : IllegalStateException("Model request failed: $code. No action executed.")
+class ModelStreamInterruptedException : IllegalStateException("Stream disconnected before response.completed. No action executed.")

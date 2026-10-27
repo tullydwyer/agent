@@ -237,3 +237,92 @@ The user confirmed that a push-to-talk phrase was transcribed and its reply spok
 The repeat voice turn after fixing the stack overflow completed and the user confirmed audible playback. The timing display still reported no samples; a missing utterance-registration step was fixed and the app rebuilt and reinstalled. That latest timing fix has not yet been exercised in a live voice trial. Phase 1 remains open until the interruption and latency measurements are completed.
 
 After registering queued utterance IDs, the user confirmed another completed voice reply. The app recorded 3,194 ms from recognizer end-of-speech callback to first local playback start. This is one sample on the connected Pixel and cannot establish a meaningful median or p95; more measured turns are required.
+
+## Experiment 004 — Phase 1 controller and bundled skills
+
+28 October 2026 (Australia/Brisbane). Stock Pixel 7, reporting Android 17/API 37;
+the app still compiles/targets API 36 with minimum API 31. Installed debug updates
+over the existing signed-in app with `adb install -r`. No uninstall/data clearing.
+The user explicitly enabled live testing after clarification that speech/storage
+run locally and ChatGPT reasoning sends context to OpenAI. Live instrumentation
+used only synthetic prompts and bundled skills, with the existing plan connection
+and account-catalog model `gpt-6-luna`; no saved conversations were uploaded.
+
+### Implemented behavior
+
+- Normal turns now use namespaced `skills.activate`/`skills.read_resource` through
+  a shared controller: 90-second turn timeout, five tool rounds, four calls per
+  response, twelve total calls, validated arguments/results and duplicate-ID
+  rejection. Tools execute only after a completed response. Zero automatic
+  inference retries; cancellation never replays work.
+- Cancellation clears busy state immediately and invalidates delayed stream/audio
+  callbacks. Removed the old job's unconditional busy-state cleanup, which could
+  reset a newer turn. Cancellable HTTP requests close the outstanding call when
+  the coroutine is cancelled or times out. Error states distinguish network,
+  account/usage, timeout, cancellation and generic failure.
+- Safe YAML parsing and immutable APK-asset discovery; bounded catalog, packages,
+  resources, active context and tool output. Malformed packages are isolated;
+  unknown runtime requirements remain visible/unavailable. Script execution and
+  filesystem imports are unsupported. Two instruction/resource skills are bundled:
+  `clear-explanation` and `daily-briefing`.
+- Explicit/model-selected activation, application-owned skill-loading permission,
+  and restoration of skill names/resource paths by re-reading bundled content.
+  Skill metadata and saved text cannot grant native permission. Tool transcripts
+  and pending actions are never restored.
+- Complete history is bounded by pair count and escaped JSON size, preserving
+  whole recent exchanges. Persona/history remain local preferences in this phase;
+  durable factual memory and content encryption remain later tasks.
+
+### Verification and observed failures
+
+- Final assembly, lint and **35 JVM tests passed**, with no lint errors. Coverage
+  includes existing OAuth/stream handling plus YAML/name/metadata validation,
+  unsafe tags/aliases/duplicate keys, incompatible runtimes, activation/resource
+  limits, traversal/missing paths, native denial, invalid/extra arguments,
+  duplicate/oversized tool batches, bounded rounds, timeout/cancellation,
+  partial-stream failures without retry, restored context without call replay,
+  and escaped history bounds. Existing dependency/KTX/native-library advisories
+  remain; no 16 KB device compatibility claim is added.
+- Three offline Pixel tests passed: bundled discovery/resource/permission and
+  scratch-preference restoration; malformed/incompatible packages; cancellation
+  and simulated partial-stream failure without actions/replay.
+- Two initial live tests passed in 27.114 seconds total: actual model-selected
+  activation/resource loading followed by an answer containing the resource's
+  synthetic check phrase; a separate turn rebuilt active resource context and
+  answered without further calls. Another live turn requested activation after
+  the native grant was revoked, received `permission_denied`, and left the active
+  session empty.
+- The expanded first seven-test run had three subsequent live failures with
+  `UnknownHostException`: the network interruption trial had correctly restored
+  radio switches, but the next tests ran before connectivity was usable. Fixed
+  the test harness to wait (at most 30 seconds) for a validated network and DNS
+  resolution after restoring the original Wi-Fi/mobile-data flags. This adds no
+  production inference retry.
+- **All seven expanded Pixel tests then passed in 40.949 seconds total**, with
+  no skipped tests: the three offline cases, the two live skill cases, a real
+  streamed-turn cancellation followed by an explicit successful new request, and
+  a real stream interrupted after its first text delta by temporarily disabling
+  Wi-Fi/mobile data. The interrupted request failed rather than completing or
+  executing tools. Both network settings were restored and checked in `finally`;
+  later live turns succeeded. These totals are test-suite wall times, not response
+  latency samples.
+- Added `scripts/dev.ps1 test-phase1` to install/update and invoke the selected
+  offline tests without Gradle's uninstalling connected-test cleanup. Explicit
+  `-LiveModel <slug>` enables live cases. The helper reports instrumentation
+  failures even when `am instrument` exits zero.
+- Startup inspection showed the conversation app and persisted earlier voice
+  sample. No new fatal startup crash was returned in the inspected recent
+  AndroidRuntime output. The final history-bound refactor then passed the full
+  build/lint/JVM checks and was installed/launched for further manual testing.
+
+### Remaining gate
+
+P1-03/P1-06/P1-07 implementation and P1-08 skill validation are complete. P1-05
+remains open for a representative set of real microphone-to-model-to-local-voice
+turns, audible playback/Stop confirmation on the current build, and voice
+median/p95 against the below-four-second median target. The previous 3,194 ms
+sample is still the only observed voice timing; it is not a useful distribution.
+Text Send-to-first-delta and voice end-of-speech-to-first-playback are recorded
+separately, with at most 100 samples each; attempts that reached first output may
+still fail later. No wake accuracy, all-day reliability or battery claims follow.
+See [PHASE1.md](PHASE1.md) for the repeatable manual trial and runtime limits.

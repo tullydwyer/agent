@@ -6,6 +6,12 @@ enum class AudioState(val label: String) {
 
 data class ChatMessage(val role: String, val text: String)
 
+enum class TurnStatus(val label: String) {
+    IDLE("Ready"), REQUESTING("Thinking online"), TOOLS("Loading skill"), COMPLETE("Complete"),
+    CANCELLED("Cancelled"), TIMEOUT("Timed out"), NETWORK_ERROR("Network interrupted"),
+    ACCESS_ERROR("Account access required"), FAILED("Turn failed"),
+}
+
 data class AgentState(
     val audio: AudioState = AudioState.IDLE,
     val localRecognitionAvailable: Boolean = false,
@@ -18,4 +24,12 @@ data class AgentState(
     val busy: Boolean = false,
     val partial: String = "",
     val latency: String = "Voice latency: no samples yet.",
+    val textLatency: String = "Text latency: no samples yet.",
+    val turnStatus: TurnStatus = TurnStatus.IDLE,
+    val turnId: Long = 0,
+    val skillsAllowed: Boolean = true,
+    val skillCatalog: List<dev.pixelagent.skills.Skill> = emptyList(),
+    val skillIssues: List<dev.pixelagent.skills.SkillIssue> = emptyList(),
+    val activeSkills: List<String> = emptyList(),
+    val toolEvents: List<String> = emptyList(),
 )

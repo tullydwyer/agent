@@ -1,19 +1,26 @@
 package dev.pixelagent.model
 
+import dev.pixelagent.conversation.ConversationModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import okhttp3.Call
+import okhttp3.Callback
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.Response
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
+import java.io.IOException
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 data class ModelChoice(val slug: String, val name: String)
 
-class PlanUsageProvider(private val auth: PlanUsageAuth) : ModelProvider {
+class PlanUsageProvider(private val auth: PlanUsageAuth) : ModelProvider, ConversationModel {
     private val http = OkHttpClient.Builder().callTimeout(90, TimeUnit.SECONDS).followRedirects(false).retryOnConnectionFailure(false).build()
     @Volatile private var call: Call? = null
     var selectedModel: String? = null
@@ -64,22 +71,41 @@ class PlanUsageProvider(private val auth: PlanUsageAuth) : ModelProvider {
 
     suspend fun conversation(input: JSONArray, onDelta: (String) -> Unit): String = text(request(input, onDelta = onDelta))
 
-    private suspend fun request(input: JSONArray, tools: JSONArray? = null, requireTool: Boolean = false, onDelta: (String) -> Unit = {}): JSONObject = withContext(Dispatchers.IO) {
+    override suspend fun complete(input: JSONArray, tools: JSONArray, onDelta: (String) -> Unit): JSONObject =
+        request(input, tools, onDelta = onDelta, allowTools = true)
+
+    private suspend fun request(input: JSONArray, tools: JSONArray? = null, requireTool: Boolean = false, onDelta: (String) -> Unit = {}, allowTools: Boolean = false): JSONObject {
         val model = selectedModel ?: error("Fetch and select an account model first.")
-        val token = auth.accessToken()
+        val token = withContext(Dispatchers.IO) { auth.accessToken() }
         val body = JSONObject().put("model", model).put("input", input).put("store", false).put("stream", true)
             .put("include", JSONArray().put("reasoning.encrypted_content"))
-        if (tools != null) body.put("tools", tools).put("tool_choice", if (requireTool) "required" else "none")
+        if (tools != null) body.put("tools", tools).put("tool_choice", if (requireTool) "required" else if (allowTools) "auto" else "none")
         val request = Request.Builder().url("https://api.openai.com/v1/responses")
             .header("Authorization", "Bearer $token").header("Accept", "text/event-stream")
             .post(body.toString().toRequestBody("application/json".toMediaType())).build()
         val requestCall = http.newCall(request).also { call = it }
-        try {
-            requestCall.execute().use {
-                check(it.isSuccessful) { "Inference failed (HTTP ${it.code}). Check connectivity, reconnect, or review ChatGPT plan limits. No retry or paid fallback was used." }
-                ResponseStream.read(it.body!!.charStream().buffered(), onDelta)
-            }
-        } finally { call = null }
+        return suspendCancellableCoroutine { continuation ->
+            continuation.invokeOnCancellation { requestCall.cancel() }
+            requestCall.enqueue(object : Callback {
+                override fun onFailure(call: Call, e: IOException) {
+                    if (this@PlanUsageProvider.call === requestCall) this@PlanUsageProvider.call = null
+                    if (continuation.isActive) continuation.resumeWithException(e)
+                }
+                override fun onResponse(call: Call, response: Response) {
+                    try {
+                        val result = response.use {
+                            if (!it.isSuccessful) throw ModelHttpException(it.code)
+                            ResponseStream.read(it.body!!.charStream().buffered(), onDelta)
+                        }
+                        if (continuation.isActive) continuation.resume(result)
+                    } catch (failure: Exception) {
+                        if (continuation.isActive) continuation.resumeWithException(failure)
+                    } finally {
+                        if (this@PlanUsageProvider.call === requestCall) this@PlanUsageProvider.call = null
+                    }
+                }
+            })
+        }
     }
     private fun user(text: String) = JSONObject().put("role", "user").put("content", text.take(4000))
     private fun text(response: JSONObject): String {
@@ -95,3 +121,5 @@ class PlanUsageProvider(private val auth: PlanUsageAuth) : ModelProvider {
         return text.toString().takeIf(String::isNotBlank) ?: error("Completed response contained no text.")
     }
 }
+
+class ModelHttpException(val status: Int) : IOException("Model HTTP $status")

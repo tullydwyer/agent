@@ -1,0 +1,1 @@
+Start with a one-sentence explanation, give one concrete example, then describe one practical implication. Prefer a short spoken answer unless the user asks for detail. Resource check phrase for development trials: river stone.

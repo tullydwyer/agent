@@ -20,9 +20,11 @@ using shared tools to operate their signed-in Android apps. Operating other apps
 possible, with user-enabled Accessibility access, but compatibility must be
 tested per app.** A skill does not itself grant phone control or account access.
 
-This is a research/design result. The current APK does not implement skill
-loading, Google tools, or an Accessibility service. No device-control experiment
-was performed for this research.
+Phase 1 now implements bundled skill loading, explicit/model-selected activation,
+bounded resource reads, context restoration and native permission checks in normal
+conversations. Live skill model trials passed on the Pixel (Experiment 004).
+Google tools and an Accessibility service remain unimplemented; no app-control
+experiment was performed for this research. See [the Phase 1 guide](PHASE1.md).
 
 ## What a skill provides
 
@@ -76,12 +78,12 @@ These are project design choices, not additional requirements of the standard:
    Mail, documents, and screen text remain external data rather than authority
    to install skills or change policy.
 
-The model adapter must expose the catalog and activation functions in normal
-conversation turns. Its current diagnostic tool trial is not a general agent
-loop: `conversation()` supplies no tools, and `request()` currently selects
-`tool_choice: none` unless the diagnostic explicitly requires a tool. Extend this
-with bounded tool rounds, validated arguments, tool results, cancellation, and
-permission checks before calling the feature implemented.
+The phase 1 adapter now exposes the catalog and activation/resource functions
+through `ConversationController` and `PlanUsageProvider.complete()`, using
+`tool_choice: auto`. It bounds rounds/calls, validates arguments/results, checks
+native grants, and cancels outstanding HTTP calls. The diagnostic `toolTrial()`
+remains separate. Bundled instructions/resources are supported; deliberate
+filesystem imports and executable runtimes remain future work.
 
 ## Gmail and Drive
 

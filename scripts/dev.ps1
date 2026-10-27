@@ -1,7 +1,9 @@
 param(
-    [ValidateSet('doctor', 'build', 'install', 'run', 'measure')]
+    [ValidateSet('doctor', 'build', 'install', 'run', 'measure', 'test-phase1')]
     [string]$Action = 'doctor',
-    [string]$Serial
+    [string]$Serial,
+    [ValidatePattern('^[a-z0-9][a-z0-9._-]{0,100}$')]
+    [string]$LiveModel
 )
 
 $ErrorActionPreference = 'Stop'
@@ -55,6 +57,11 @@ try {
         return
     }
 
+    if ($Action -eq 'test-phase1') {
+        & .\gradlew.bat assembleDebug assembleDebugAndroidTest --console=plain
+        if ($LASTEXITCODE -ne 0) { throw 'Phase 1 test APK build failed.' }
+    }
+
     $deviceLines = @(Invoke-Adb devices)
     $connectedSerials = @($deviceLines | ForEach-Object {
         if ($_ -match '^([^\s]+)\s+device$') { $Matches[1] }
@@ -67,7 +74,25 @@ try {
     }
     if ($Serial -notin $connectedSerials) { throw 'The selected device is disconnected or not authorized.' }
 
-    if ($Action -eq 'measure') {
+    if ($Action -eq 'test-phase1') {
+        # Explicit install/update and instrumentation retain the signed-in app.
+        # Gradle connected tests can uninstall it during cleanup; do not use them here.
+        Invoke-Adb -s $Serial install -r (Join-Path $projectRoot 'app\build\outputs\apk\debug\app-debug.apk')
+        Invoke-Adb -s $Serial install -r (Join-Path $projectRoot 'app\build\outputs\apk\androidTest\debug\app-debug-androidTest.apk')
+        $testArgs = @('-s', $Serial, 'shell', 'am', 'instrument', '-w', '-e', 'class')
+        if ($LiveModel) {
+            Write-Output 'Live trials send bundled skills and synthetic prompts to api.openai.com using the signed-in ChatGPT plan.'
+            $testArgs += @('dev.pixelagent.PhaseOneTest', '-e', 'liveModel', $LiveModel)
+        } else {
+            $testArgs += 'dev.pixelagent.PhaseOneTest#bundledDiscoveryResourcesPermissionsAndRecreation,dev.pixelagent.PhaseOneTest#malformedAndIncompatiblePackagesAreIsolatedOnAndroid,dev.pixelagent.PhaseOneTest#cancellationAndPartialFailureDoNotExecuteOrReplayOnAndroid'
+        }
+        $testArgs += 'dev.pixelagent.test/androidx.test.runner.AndroidJUnitRunner'
+        $testOutput = @(Invoke-Adb @testArgs)
+        $testOutput | Write-Output
+        if (($testOutput -join "`n") -notmatch 'OK \([0-9]+ tests?\)' -or ($testOutput -join "`n") -match 'FAILURES!!!|INSTRUMENTATION_FAILED|Process crashed') {
+            throw 'Phase 1 device tests failed or did not complete.'
+        }
+    } elseif ($Action -eq 'measure') {
         Write-Output 'Snapshot only. USB charging invalidates discharge measurements.'
         Invoke-Adb -s $Serial shell getprop ro.product.model
         Invoke-Adb -s $Serial shell getprop ro.build.version.release
