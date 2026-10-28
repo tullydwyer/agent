@@ -1,6 +1,14 @@
 package dev.pixelagent.conversation
 
 import android.app.Application
+import android.net.Uri
+import androidx.room.Room
+import dev.pixelagent.memory.MemoryDatabase
+import dev.pixelagent.memory.MemoryRepository
+import dev.pixelagent.memory.MemoryRetrieval
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
@@ -37,6 +45,9 @@ class AgentRuntime private constructor(application: Application) {
     }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val prefs = application.getSharedPreferences("conversation", 0)
+    private val app = application
+    private val memory = MemoryRepository(Room.databaseBuilder(application, MemoryDatabase::class.java, "memory.db").build())
+    private val memoryLock = Mutex()
     private val registry = SkillRegistry(AssetSkillSource(application.assets))
     private val skills = SkillSession(registry, prefs.getString("active_skills", "[]") ?: "[]")
     private val mutableState = MutableStateFlow(AgentState())
@@ -67,20 +78,81 @@ class AgentRuntime private constructor(application: Application) {
     )
 
     init {
+        dev.pixelagent.camera.SnapshotEncoder.clearTemporaryFiles(application.cacheDir)
         val saved = runCatching {
-            ConversationHistory.restore(prefs.getString("messages", "[]") ?: "[]")
+            if (prefs.getBoolean("memory_context_invalid", false)) emptyList()
+            else ConversationHistory.restore(prefs.getString("messages", "[]") ?: "[]")
         }.getOrDefault(emptyList())
         mutableState.update { it.copy(messages = saved, persona = (prefs.getString("persona", it.persona) ?: it.persona).take(1000),
             localRecognitionAvailable = speech.recognitionAvailable, skillCatalog = registry.skills, skillIssues = registry.issues,
             activeSkills = skills.names, skillsAllowed = prefs.getBoolean("skills_allowed", true)) }
         updateLatencyLabels()
         speech.initialize()
+        scope.launch {
+            runCatching {
+                val persona = memory.initializePersona(state.value.persona)
+                expireMemories()
+                prefs.edit().remove("persona").apply()
+                mutableState.update { it.copy(persona = persona, memoryReady = true, memoryNotice = "Only confirmed, relevant facts go to the online model.") }
+                memory.facts.collect { facts -> mutableState.update { it.copy(memories = facts) } }
+            }.onFailure { mutableState.update { it.copy(memoryNotice = "Local memory could not be opened. Restart the app to retry.") } }
+        }
     }
 
     fun setPersona(value: String) {
+        if (!state.value.memoryReady || state.value.busy) return
         val bounded = value.take(1000)
         mutableState.update { it.copy(persona = bounded) }
-        prefs.edit().putString("persona", bounded).apply()
+        memoryChange { memory.setPersona(bounded) }
+    }
+    private fun clearDerivedContext() {
+        save(emptyList())
+        mutableState.update { it.copy(messages = emptyList(), transcript = "", partial = "", toolEvents = emptyList()) }
+    }
+    private suspend fun invalidateDerivedContext() {
+        // Commit an invalidation marker before changing Room. A crash between
+        // the DB commit and asynchronous preference cleanup must not restore
+        // replies containing the forgotten fact on the next process start.
+        check(withContext(Dispatchers.IO) { prefs.edit().putBoolean("memory_context_invalid", true).commit() }) { "Could not invalidate conversation history." }
+        clearDerivedContext()
+    }
+    private suspend fun expireMemories() {
+        if (memory.hasExpired()) {
+            invalidateDerivedContext()
+            memory.purgeExpired()
+        }
+    }
+    private fun memoryChange(change: suspend () -> Unit) {
+        cancel()
+        scope.launch {
+            memoryLock.withLock {
+                runCatching { invalidateDerivedContext(); change() }
+                    .onSuccess { mutableState.update { it.copy(memoryNotice = "Saved locally. Conversation history cleared to remove derived context.") } }
+                    .onFailure { failure -> mutableState.update { it.copy(memoryNotice = failure.message ?: "Memory update failed.") } }
+            }
+        }
+    }
+    fun saveMemory(id: Long?, text: String, source: String, expiresAt: Long?, confirmed: Boolean) = memoryChange {
+        memory.save(id, text, source, expiresAt, confirmed)
+    }
+    fun forgetMemory(id: Long) = memoryChange { memory.forget(id) }
+    fun deleteMemory() = memoryChange {
+        memory.deleteAll()
+        val default = AgentState().persona
+        memory.setPersona(default)
+        mutableState.update { it.copy(persona = default) }
+    }
+    fun exportMemory(uri: Uri) {
+        scope.launch {
+            memoryLock.withLock {
+                runCatching {
+                    if (memory.hasExpired()) { cancel(); expireMemories() }
+                    val json = memory.export()
+                    withContext(Dispatchers.IO) { app.contentResolver.openOutputStream(uri, "wt")!!.bufferedWriter().use { it.write(json) } }
+                }.onSuccess { mutableState.update { it.copy(memoryNotice = "Memory and persona exported to your chosen file.") } }
+                    .onFailure { mutableState.update { it.copy(memoryNotice = "Export failed. Choose a writable file and try again.") } }
+            }
+        }
     }
     fun setSkillsAllowed(allowed: Boolean) {
         if (state.value.busy) cancel()
@@ -99,7 +171,7 @@ class AgentRuntime private constructor(application: Application) {
     }
     private fun save(messages: List<ChatMessage>): List<ChatMessage> {
         val saved = ConversationHistory.prepare(messages)
-        prefs.edit().putString("messages", saved.json).apply()
+        prefs.edit().putString("messages", saved.json).putBoolean("memory_context_invalid", false).apply()
         return saved.messages
     }
     private fun recordVoiceLatency() {
@@ -134,9 +206,10 @@ class AgentRuntime private constructor(application: Application) {
     fun listenTest() { sendTranscript = false; speechEndedAt = 0L; speech.listen() }
     fun speak() = speech.speak(state.value.transcript.ifBlank { "Hello. Pixel Agent is running on this phone." })
 
-    fun send(text: String, model: PlanUsageProvider, speakReply: Boolean = false) {
+    fun send(text: String, model: PlanUsageProvider, speakReply: Boolean = false, imageDataUrl: String? = null) {
         val message = text.trim().take(4000)
         if (message.isBlank() || state.value.busy) return
+        if (!state.value.memoryReady) { showNotice("Wait for local memory to finish loading."); return }
         if (!model.isConfigured) { mutableState.update { it.copy(notice = "Select an account model first.") }; return }
         sendTranscript = false
         speech.stop()
@@ -146,10 +219,14 @@ class AgentRuntime private constructor(application: Application) {
         textStartedAt = if (speakReply) 0L else SystemClock.elapsedRealtime()
         sentence = StringBuilder()
         val id = ++turn
-        val input = ConversationContext.build(state.value.persona, state.value.messages, message, registry, skills, state.value.skillsAllowed)
-        mutableState.update { it.copy(busy = true, awaitingTranscript = false, partial = "", notice = "Thinking online…", turnId = id, turnStatus = TurnStatus.REQUESTING, toolEvents = emptyList()) }
+        mutableState.update { it.copy(busy = true, imageUploading = imageDataUrl != null, awaitingTranscript = false, partial = "", notice = if (imageDataUrl == null) "Thinking online…" else "Snapshot sent to the online model for this turn. Camera off.", turnId = id, turnStatus = TurnStatus.REQUESTING, toolEvents = emptyList()) }
         job = scope.launch {
             try {
+                val input = memoryLock.withLock {
+                    expireMemories()
+                    val facts = memory.retrieve(message)
+                    ConversationContext.build(state.value.persona, state.value.messages, message, registry, skills, state.value.skillsAllowed, MemoryRetrieval.context(facts), imageDataUrl)
+                }
                 val response = ConversationController(model, dispatcher).run(input, onDelta = { delta -> handler.post {
                     if (id == turn && state.value.busy) {
                         if (textStartedAt != 0L) { addLatency("text_latency_ms", SystemClock.elapsedRealtime() - textStartedAt); textStartedAt = 0L }
@@ -165,8 +242,9 @@ class AgentRuntime private constructor(application: Application) {
                 if (id != turn) return@launch
                 if (voiceTurn && sentence.isNotBlank()) speech.speak(sentence.toString(), enqueue = true)
                 sentence.clear()
-                val messages = save(state.value.messages + ChatMessage("user", message) + ChatMessage("assistant", response))
-                mutableState.update { it.copy(messages = messages, busy = false, partial = "", notice = "Reply complete.", turnStatus = TurnStatus.COMPLETE) }
+                val savedMessage = if (imageDataUrl == null) message else "[Camera snapshot sent for this turn; image not retained] ${message.take(3900)}"
+                val messages = save(state.value.messages + ChatMessage("user", savedMessage) + ChatMessage("assistant", response))
+                mutableState.update { it.copy(messages = messages, busy = false, imageUploading = false, partial = "", notice = if (imageDataUrl == null) "Reply complete." else "Snapshot reply complete. Image discarded; text remains in conversation history.", turnStatus = TurnStatus.COMPLETE) }
             } catch (_: TimeoutCancellationException) {
                 fail(id, TurnStatus.TIMEOUT, "Turn timed out after 90 seconds. Retry explicitly when ready.")
             } catch (cancelled: CancellationException) {
@@ -177,6 +255,9 @@ class AgentRuntime private constructor(application: Application) {
                     failure is ModelResponseException && failure.code in setOf("subscription_sharing_usage_limit_exceeded", "subscription_sharing_usage_unavailable") -> TurnStatus.ACCESS_ERROR
                     failure is IOException || failure is ModelStreamInterruptedException -> TurnStatus.NETWORK_ERROR; else -> TurnStatus.FAILED }
                 fail(id, status, "${status.label}. Check connectivity, account access or plan limits, then retry explicitly.")
+            } finally {
+                // Do not retain a completed coroutine frame containing image bytes.
+                if (id == turn) job = null
             }
         }
     }
@@ -197,7 +278,7 @@ class AgentRuntime private constructor(application: Application) {
         textStartedAt = 0L
         sentence.clear()
         speech.stop()
-        mutableState.update { it.copy(busy = false, partial = "", turnStatus = status, notice = "$notice Partial reply discarded; streamed speech may already have been heard. No automatic retry.") }
+        mutableState.update { it.copy(busy = false, imageUploading = false, partial = "", turnStatus = status, notice = "$notice Partial reply discarded; streamed speech may already have been heard. No automatic retry.") }
     }
     fun stopAudio() { sendTranscript = false; speechEndedAt = 0L; speech.stop(); mutableState.update { it.copy(awaitingTranscript = false) } }
     fun cancel() {
@@ -213,7 +294,7 @@ class AgentRuntime private constructor(application: Application) {
         job?.cancel()
         job = null
         speech.stop()
-        mutableState.update { it.copy(busy = false, awaitingTranscript = false, partial = "", turnStatus = TurnStatus.CANCELLED, notice = "Cancelled. Partial reply discarded; streamed speech may already have been heard.") }
+        mutableState.update { it.copy(busy = false, imageUploading = false, awaitingTranscript = false, partial = "", turnStatus = TurnStatus.CANCELLED, notice = "Cancelled. Partial reply discarded; streamed speech may already have been heard.") }
     }
     fun showNotice(message: String) { mutableState.update { it.copy(notice = message) } }
     fun permissionDenied() { mutableState.update { it.copy(notice = "Microphone access was declined.") } }

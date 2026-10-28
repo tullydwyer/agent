@@ -1,5 +1,5 @@
 param(
-    [ValidateSet('doctor', 'build', 'install', 'run', 'measure', 'test-phase1', 'test-phase4')]
+    [ValidateSet('doctor', 'build', 'install', 'run', 'measure', 'test-phase1', 'test-phase2', 'test-phase4')]
     [string]$Action = 'doctor',
     [string]$Serial,
     [ValidatePattern('^[a-z0-9][a-z0-9._-]{0,100}$')]
@@ -57,7 +57,7 @@ try {
         return
     }
 
-    if ($Action -in @('test-phase1', 'test-phase4')) {
+    if ($Action -in @('test-phase1', 'test-phase2', 'test-phase4')) {
         & .\gradlew.bat assembleDebug assembleDebugAndroidTest --console=plain
         if ($LASTEXITCODE -ne 0) { throw 'Device test APK build failed.' }
     }
@@ -74,13 +74,16 @@ try {
     }
     if ($Serial -notin $connectedSerials) { throw 'The selected device is disconnected or not authorized.' }
 
-    if ($Action -in @('test-phase1', 'test-phase4')) {
+    if ($Action -in @('test-phase1', 'test-phase2', 'test-phase4')) {
         # Explicit install/update and instrumentation retain the signed-in app.
         # Gradle connected tests can uninstall it during cleanup; do not use them here.
         Invoke-Adb -s $Serial install -r (Join-Path $projectRoot 'app\build\outputs\apk\debug\app-debug.apk')
         Invoke-Adb -s $Serial install -r (Join-Path $projectRoot 'app\build\outputs\apk\androidTest\debug\app-debug-androidTest.apk')
         $testArgs = @('-s', $Serial, 'shell', 'am', 'instrument', '-w', '-e', 'class')
-        if ($Action -eq 'test-phase4') {
+        if ($Action -eq 'test-phase2') {
+            Write-Output 'Local memory/encoder and camera lifecycle tests. Starts camera briefly; no image is uploaded. Keep phone unlocked with a model selected.'
+            $testArgs += @('dev.pixelagent.PhaseTwoTest', '-e', 'cameraUi', 'true')
+        } elseif ($Action -eq 'test-phase4') {
             Write-Output 'Local hands-free lifecycle tests: quiet room, initially unlocked, signed-in model selected. No intentional inference.'
             $testArgs += 'dev.pixelagent.HandsFreeServiceTest'
         } elseif ($LiveModel) {
@@ -90,7 +93,19 @@ try {
             $testArgs += 'dev.pixelagent.PhaseOneTest#bundledDiscoveryResourcesPermissionsAndRecreation,dev.pixelagent.PhaseOneTest#malformedAndIncompatiblePackagesAreIsolatedOnAndroid,dev.pixelagent.PhaseOneTest#cancellationAndPartialFailureDoNotExecuteOrReplayOnAndroid'
         }
         $testArgs += 'dev.pixelagent.test/androidx.test.runner.AndroidJUnitRunner'
-        $testOutput = @(Invoke-Adb @testArgs)
+        # Revoking CAMERA kills the app process. Restore it from the host only
+        # after instrumentation has emitted its complete result.
+        $restoreCameraDenial = $false
+        if ($Action -eq 'test-phase2') {
+            $packageState = (Invoke-Adb -s $Serial shell dumpsys package dev.pixelagent) -join "`n"
+            if ($packageState -notmatch 'android.permission.CAMERA: granted=(true|false)') { throw 'Cannot determine original camera permission.' }
+            $restoreCameraDenial = $Matches[1] -eq 'false'
+            if ($restoreCameraDenial) { Invoke-Adb -s $Serial shell pm grant dev.pixelagent android.permission.CAMERA }
+        }
+        try { $testOutput = @(Invoke-Adb @testArgs) }
+        finally {
+            if ($restoreCameraDenial) { Invoke-Adb -s $Serial shell pm revoke dev.pixelagent android.permission.CAMERA }
+        }
         $testOutput | Write-Output
         if (($testOutput -join "`n") -notmatch 'OK \([0-9]+ tests?\)' -or ($testOutput -join "`n") -match 'FAILURES!!!|INSTRUMENTATION_FAILED|Process crashed') {
             throw 'Device tests failed or did not complete.'

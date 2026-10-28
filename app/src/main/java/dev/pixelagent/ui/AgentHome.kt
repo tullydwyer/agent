@@ -39,9 +39,10 @@ fun AgentHome(
     onSettings: () -> Unit, onTalk: () -> Unit, onStartSession: () -> Unit,
     onStopSession: () -> Unit, onCancel: () -> Unit, onSend: (String) -> Unit,
     duration: Long, onDuration: (Long) -> Unit, wakeWord: String,
+    onCamera: () -> Unit,
 ) {
     var draft by rememberSaveable { mutableStateOf("") }
-    val connected = cloud.selectedModel != null && !cloud.busy
+    val connected = cloud.selectedModel != null && !cloud.busy && agent.memoryReady
     val idle = !agent.awaitingTranscript && !agent.busy && agent.audio == AudioState.IDLE && !keywordActive
     val canTalk = connected && idle && !session.active && agent.localRecognitionAvailable
     val keyboard = WindowInsets.ime.getBottom(LocalDensity.current) > 0
@@ -67,7 +68,7 @@ fun AgentHome(
         Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
             AgentFace(label, agent.audio == AudioState.SPEAKING, agent.busy, session.listening || agent.audio == AudioState.LISTENING, if (keyboard) 76.dp else 170.dp)
             Text(label, style = MaterialTheme.typography.headlineSmall)
-            Text("Camera off · Mic ${if (session.listening || agent.audio == AudioState.LISTENING || agent.audio == AudioState.TRANSCRIBING) "on" else "off"}",
+            Text("Camera off${if (agent.imageUploading) " · Snapshot sent online" else ""} · Mic ${if (session.listening || agent.audio == AudioState.LISTENING || agent.audio == AudioState.TRANSCRIBING) "on" else "off"}",
                 style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Text(if (connected) agent.notice.takeUnless { it == "Select an account model to start a conversation." } ?: "Talk to me or start a hands-free session." else cloud.result,
@@ -111,6 +112,7 @@ fun AgentHome(
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = onTalk, enabled = canTalk, modifier = Modifier.weight(1f)) { Text("Talk to Pixel") }
+            OutlinedButton(onClick = onCamera, enabled = connected && idle && !session.active) { Text("Camera") }
             OutlinedButton(onClick = onCancel, enabled = agent.busy || agent.audio != AudioState.IDLE || session.active) { Text("Stop") }
         }
         Row(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {

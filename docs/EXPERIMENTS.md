@@ -410,3 +410,65 @@ remain a separate gate. Force-stop/reboot messaging, live permission/focus loss,
 call/headset handling and private-readout hardening are not yet device-validated
 for this implementation. See [PHASE4.md](PHASE4.md) for reproducible procedures;
 P4-04/P4-05 and the overall Phase 4 exit gate remain open.
+
+## Experiment 006 — Phase 2 memory and camera (28 October 2026)
+
+### Implementation
+
+Added Room facts/persona with provenance, timestamps, expiry and confirmation;
+literal-token FTS retrieval with eight-result/200-fact bounds; explicit draft,
+confirm/edit/remember/forget, document-picker JSON export and local deletion.
+The legacy persona migrates once. Memory changes cancel inference and invalidate
+all derived conversation context before mutation; a durable preference marker
+protects against interruption between DB and history updates. No embeddings,
+generated summaries or automatic memory-write tools are introduced.
+
+Added lifecycle-bound CameraX front/rear preview and local still capture,
+orientation correction, metadata stripping, resizing to at most 1024 pixels,
+180,000-byte JPEG cap and cache cleanup. Review closes the camera. Explicit Send
+attaches one reviewed snapshot and a question to the normal conversation/model
+path. Saved history contains a text marker and answer, never image bytes. Cancel,
+Back/background and Activity recreation discard pending review; backgrounding
+cancels an image request. Completed coroutine frames are released to avoid
+retaining the image. See [PHASE2.md](PHASE2.md) for controls and limits.
+
+### Verification
+
+- Stock Pixel 7, Android 16/API 36, USB-connected and unlocked; existing signed-in
+  app updated with `adb install -r`. Credentials retained. Test facts use isolated
+  databases, which are deleted afterward; no private memory fixture is uploaded.
+- `scripts/dev.ps1 build`: assembly, lint and **45 JVM tests passed**, zero test
+  failures/skips. Lint: zero errors, 39 advisory warnings, including dependency
+  updates, existing Intent SAM warnings and native-library alignment notices.
+  Kapt reports its Kotlin 1.9 compatibility fallback. No 16 KB-device claim.
+- `scripts/dev.ps1 test-phase2`: **four device tests passed in 11.015 seconds**,
+  with all four bodies executed. Real Room close/reopen retained confirmed facts
+  and persona. Drafts were excluded; editing removed old search tokens; forgetting
+  removed the row, its FTS result and the fact from a rebuilt model input. Expiry,
+  export/delete, 200-fact capacity and eight-result bounds passed.
+- Encoder test verified 2400×1200 input with 90-degree EXIF became 512×1024 JPEG,
+  byte/data-URL bounds, stripped private metadata and stale-cache cleanup.
+- UI test opened rear/front camera, captured a **local** still, reached review,
+  observed all CameraX camera states CLOSED, verified no capture files, cancelled,
+  reopened preview, backgrounded and observed CLOSED again. Foreground return
+  retained neither preview nor reviewed snapshot. **No camera image was sent to
+  a model during this test.** Prior camera permission denial was restored.
+- Initial harness restoration of camera denial killed instrumentation before its
+  result (Android revocation terminates the app); restoration moved to the host
+  script. A subsequent UI attempt clicked before account/memory readiness and
+  failed to open preview. The test now waits for the actual ready state. These
+  failed attempts are not counted as passes. Camera status now observes actual
+  CameraX state rather than assuming a successful bind means the camera is open.
+- After final context-budget/frame-cleanup changes, assembly/lint/JVM checks
+  passed again, and **all three offline Phase 1 device regression tests passed in
+  0.238 seconds** with the final APK installed. No live inference was requested.
+
+### Remaining exit-gate evidence
+
+P2-01/P2-02/P2-04 implementation is complete. P2-03 retains the integrated
+app-process restart/forget trial with real model turns: Room reopen and rebuilt
+input tests establish storage/retrieval behavior, but do not claim that full live
+trial. P2-05 still requires a user-captured image and verified answer through the
+selected account model, plus background/cancel during upload and permission-loss
+trials. The earlier generated provider image diagnostic is separate evidence.
+Instructions are in [PHASE2.md](PHASE2.md); the Phase 2 exit gate remains open.

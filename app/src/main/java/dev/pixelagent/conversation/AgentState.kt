@@ -33,4 +33,8 @@ data class AgentState(
     val skillIssues: List<dev.pixelagent.skills.SkillIssue> = emptyList(),
     val activeSkills: List<String> = emptyList(),
     val toolEvents: List<String> = emptyList(),
+    val memoryReady: Boolean = false,
+    val memories: List<dev.pixelagent.memory.MemoryFact> = emptyList(),
+    val memoryNotice: String = "Loading local memory…",
+    val imageUploading: Boolean = false,
 )

@@ -25,6 +25,8 @@ import dev.pixelagent.conversation.AgentViewModel
 import dev.pixelagent.conversation.AudioState
 import dev.pixelagent.model.ModelLabViewModel
 import dev.pixelagent.ui.AgentHome
+import dev.pixelagent.ui.MemoryPanel
+import dev.pixelagent.camera.CameraScreen
 import dev.pixelagent.wakeword.HandsFreeService
 import dev.pixelagent.wakeword.KeywordService
 import dev.pixelagent.wakeword.SessionPolicy
@@ -34,6 +36,7 @@ class MainActivity : ComponentActivity() {
     private val agentModel: AgentViewModel by viewModels()
     private val agent get() = agentModel.runtime
     private val modelLab: ModelLabViewModel by viewModels()
+    private var cameraVisible by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -71,6 +74,13 @@ class MainActivity : ComponentActivity() {
                         else -> agent.listen(modelLab.provider)
                     } else agent.permissionDenied()
                 }
+                val cameraPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+                    if (granted && lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) cameraVisible = true
+                    else agent.showNotice("Camera access was declined or the app left the foreground. Tap Camera to retry.")
+                }
+                val exportMemory = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+                    uri?.let(agent::exportMemory)
+                }
                 fun requestMicrophone(action: String) {
                     permissionAction = action
                     if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED)
@@ -82,7 +92,12 @@ class MainActivity : ComponentActivity() {
                     }
                 }
                 Scaffold(containerColor = MaterialTheme.colorScheme.background) { insets ->
-                    if (!settings) {
+                    if (cameraVisible) {
+                        CameraScreen(Modifier.padding(insets), onClose = { cameraVisible = false }, onSend = { question, photo ->
+                            cameraVisible = false
+                            agent.send(question, modelLab.provider, imageDataUrl = photo.dataUrl())
+                        })
+                    } else if (!settings) {
                         val recovery = remember(session.active) {
                             val prefs = getSharedPreferences("hands_free", 0)
                             if (prefs.getBoolean("interrupted", false) && !session.active)
@@ -93,7 +108,11 @@ class MainActivity : ComponentActivity() {
                             onSettings = { settings = true }, onTalk = { requestMicrophone("talk") },
                             onStartSession = { requestMicrophone("session") }, onStopSession = ::stopHandsFree,
                             onCancel = { if (session.active) stopHandsFree() else agent.cancel() },
-                            onSend = { agent.send(it, modelLab.provider) }, duration = duration, onDuration = { duration = it }, wakeWord = wakeWord)
+                            onSend = { agent.send(it, modelLab.provider) }, duration = duration, onDuration = { duration = it }, wakeWord = wakeWord,
+                            onCamera = {
+                                if (checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) cameraVisible = true
+                                else cameraPermission.launch(Manifest.permission.CAMERA)
+                            })
                     } else {
                         LazyColumn(Modifier.fillMaxSize().padding(insets), contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                             item { TextButton(onClick = { settings = false }) { Text("← Back to agent") }; Text("Agent settings", style = MaterialTheme.typography.headlineMedium) }
@@ -128,7 +147,7 @@ class MainActivity : ComponentActivity() {
                                 TextButton(onClick = modelLab::signOut, enabled = !state.busy && !cloud.busy && !session.active && cloud.connection != "Not connected") { Text("Sign out") }
                             } }
                             item { SettingsCard("Identity and local speech") {
-                                OutlinedTextField(state.persona, agent::setPersona, label = { Text("Agent persona") }, enabled = !state.busy && !session.active, modifier = Modifier.fillMaxWidth())
+                                OutlinedTextField(state.persona, agent::setPersona, label = { Text("Agent persona") }, enabled = state.memoryReady && !state.busy && !session.active, modifier = Modifier.fillMaxWidth())
                                 Text("Local recognizer: ${if (state.localRecognitionAvailable) "available" else "unavailable"}")
                                 Text("Offline voice: ${if (state.ttsInitializing) "checking…" else state.localVoice ?: "not installed"}")
                                 Text("${Build.MODEL} · Android ${Build.VERSION.RELEASE} · API ${Build.VERSION.SDK_INT}")
@@ -136,6 +155,11 @@ class MainActivity : ComponentActivity() {
                                 OutlinedButton(onClick = agent::speak, enabled = !state.busy && !cloud.busy && !session.active && !keyword.active && state.audio == AudioState.IDLE) { Text("Test local voice") }
                                 TextButton(onClick = { if (session.active) stopHandsFree() else agent.cancel() }) { Text("Stop audio") }
                                 Text(state.transcript); Text(state.notice); Text(state.latency); Text(state.textLatency)
+                            } }
+                            item { SettingsCard("Memory · on this phone") {
+                                MemoryPanel(state, state.memoryReady && !state.busy && !cloud.busy && !session.active && !keyword.active,
+                                    onSave = agent::saveMemory, onForget = agent::forgetMemory,
+                                    onExport = { exportMemory.launch("pixel-agent-memory.json") }, onDelete = agent::deleteMemory)
                             } }
                             item { SettingsCard("Skills · optional") {
                                 Text("You can add skills later. Conversation and hands-free sessions work without activating a skill. Imports and script runtimes are not implemented yet.")
@@ -157,7 +181,7 @@ class MainActivity : ComponentActivity() {
                                 TextButton(onClick = modelLab::cancel, enabled = cloud.busy) { Text("Cancel experiment") }
                                 Text(keyword.notice)
                                 OutlinedButton(onClick = { stopService(Intent(this@MainActivity, KeywordService::class.java)) }, enabled = keyword.active) { Text("Stop old keyword trial") }
-                                Text("Wake engine: sherpa-onnx 1.12.14 · GigaSpeech 3.3M · $wakeWord. Keyword audio is discarded locally. No camera capture.")
+                                Text("Wake engine: sherpa-onnx 1.12.14 · GigaSpeech 3.3M · $wakeWord. Keyword audio is discarded locally. Camera opens only from the Camera button.")
                             } }
                         }
                     }
@@ -171,6 +195,8 @@ class MainActivity : ComponentActivity() {
     }
     private fun stopHandsFree() { stopService(Intent(this, HandsFreeService::class.java)) }
     override fun onStop() {
+        cameraVisible = false
+        if (agent.state.value.imageUploading) agent.cancel()
         if (!isChangingConfigurations && !HandsFreeService.state.value.active) {
             if (agent.state.value.busy) agent.cancel() else if (agent.state.value.audio != AudioState.IDLE) agent.stopAudio()
         }

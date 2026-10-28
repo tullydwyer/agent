@@ -64,8 +64,17 @@ see the experiment log for evidence and measurement limits. Phase 1 implementati
 adds a bounded conversation/tool controller, standard skill catalog and resource
 loading, explicit activation, permission controls, and safe context restoration.
 Its voice latency distribution still needs measurement. See [the Phase 1 guide](docs/PHASE1.md) and [Phase 4 guide](docs/PHASE4.md).
-Gmail, Drive, camera capture, durable factual memory, and generic app control remain
-later work. See the [skills and app-control research](docs/SKILLS-AND-APP-CONTROL.md)
+Phase 2 adds **Settings → Memory** for explicit fact drafts/confirmation, editing,
+expiry, forgetting, JSON export and deletion. Relevant confirmed facts accompany
+model turns; memory changes clear chat history to remove derived context. Persona
+and facts live in Room on this phone. Tap **Camera** for front/rear preview, then
+capture and review a snapshot before explicitly sending it with a question.
+Images go to your selected online model only after Send; image bytes are discarded
+after that turn while textual history remains. Cancel/background releases the
+camera and discards pending review. See [the Phase 2 guide](docs/PHASE2.md) for
+limits, local device checks and remaining integrated memory/image-answer trials.
+
+Gmail, Drive and generic app control remain later work. See the [skills and app-control research](docs/SKILLS-AND-APP-CONTROL.md)
 for compatibility limits and root-free Android control options.
 
 ### Requirements
@@ -108,6 +117,11 @@ Use `.\scripts\dev.ps1 test-phase4` for short local microphone/service lifecycle
 checks. Start unlocked in a quiet room with a selected account model. It tests
 expiry/restart and notification Stop with the screen off, preserving sign-in;
 normal unlocking is needed after the screen-off test.
+
+Use `.\scripts\dev.ps1 test-phase2` for isolated Room/encoder and short camera
+lifecycle checks. Keep the phone unlocked with a model selected and hands-free
+stopped. The test briefly captures a local still and discards it; no image is
+uploaded. Sign-in is retained and prior camera permission denial is restored.
 
 The standard wrapper is also available: `bash ./gradlew assembleDebug lintDebug` on
 macOS/Linux or `.\gradlew.bat assembleDebug lintDebug` on Windows. Configure your

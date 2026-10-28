@@ -12,7 +12,7 @@ confirmed offline speech and a short locked-phone keyword/Stop trial. See
 
 Last updated: 28 October 2026 (Australia/Brisbane).
 
-**Current stage:** phase 0 complete; phase 1 code implemented with voice latency validation open. Phase 4 hands-free code and a visible conversation interface are implemented at the user’s request, ahead of memory/app-control/Google skills. Device and measurement evidence is tracked in Experiment 005; implementation does not close the sustained accuracy/battery gate.
+**Current stage:** phase 0 complete; phase 1 code implemented with voice latency validation open. Phase 2 memory and camera code is implemented; integrated restart/forget and user-captured image-answer gates remain open (Experiment 006). Phase 4 hands-free code and a visible conversation interface are implemented at the user’s request, ahead of app-control/Google skills. Device and measurement evidence is tracked in Experiment 005; implementation does not close the sustained accuracy/battery gate.
 
 **User decision (28 October):** the phone and its accounts/identity are dedicated
 to the agent. Setup should be ordinary sign-in to installed apps plus one-time
@@ -30,6 +30,10 @@ working code does not automatically count as a passed experiment. Record test
 conditions, results, failures, and dates in [the experiment log](docs/EXPERIMENTS.md),
 then update the matching task and phase status here. Keep task IDs stable as work
 progresses. A phase is complete only when its exit gate in section 4 is satisfied.
+
+**Phase 2 next:** run the integrated restart/forget and explicit snapshot/model
+trials in [the Phase 2 guide](docs/PHASE2.md). Implementation and local device
+tests are recorded separately from those live exit gates in Experiment 006.
 
 **Next work:** collect Phase 4 wake/battery measurements and verify silence fallback. The user confirmed the integrated voice loop and automatic follow-ups without repeating the wake word on the Pixel (Experiment 005). Skills will be added later at the user’s request. Also finish the phase 1 voice-turn latency distribution and playback/Stop trial. See [the Phase 1 guide](docs/PHASE1.md) and Experiment 004 for controller/skill checks and exact remaining evidence. Direct ChatGPT plan usage is selected for the tested personal local
 prototype. Then prove the shared app-control driver (P6 tasks, retained IDs)
@@ -236,7 +240,7 @@ Estimates below are engineering estimates for one developer already comfortable 
 | 0. Resolve feasibility | Complete: tested on Pixel; evidence and measurement limits in Experiment 002 | 3–5 days | Minimal APK on the actual Pixel; prove subscription auth/text/image/tool/refresh, offline STT/TTS, and a short screen-off keyword session. Record OS, account eligibility, model versions, latency, RAM, and battery observations. Select provider route explicitly. |
 | 1. Core conversation and skills | Code implemented; voice latency distribution gate open | 1–2 weeks baseline; skill runtime adds unestimated work | Push-to-talk/text input, local speech, streaming, persona, cancellation, history, standard skill discovery/activation/resources, and a bounded tool loop. Survive network loss without executing phantom actions. |
 | App-control prerequisite (P6 task IDs retained) | Research only; required before phase 3 | Unestimated | On a stock Pixel, demonstrate observe/action/verify in a harmless app without root or ongoing ADB, then validate signed-in Gmail/Drive sessions and required Android permissions. |
-| 2. Memory and vision | Not started | 1 week | Confirm/edit/forget facts across restarts; answer about an explicitly captured image; camera resources release on cancel/background. |
+| 2. Memory and vision | Code implemented; integrated memory/image-answer gates open | 1 week | Confirm/edit/forget facts across restarts; answer about an explicitly captured image; camera resources release on cancel/background. |
 | 3. Signed-in app skills | Not started; depends on app-control prerequisite | Re-estimate after UI-control spike | Gmail and Drive skills operate signed-in apps. Search/read mail, send one test email under operating authority, read a document, and create a Drive note. Verify session expiry, account identity, changed UI, cancellation, and duplicate-action handling. |
 | 4. Hands-free sessions | Code implemented; integrated voice and sustained measurement gates open | 1–2 weeks | Keyword -> utterance -> reply with screen off in a user-started session; Stop works; measure false wakes, missed wakes, and incremental battery use. |
 | 5. Daily-use hardening | Not started | 1–2 weeks | Lock-screen privacy, calls/headsets, process recreation, deletion/export, permission changes, bounded storage, and several days of real use. |
@@ -341,11 +345,11 @@ Implementation updated 28 October 2026: text/push-to-talk, streaming local sente
 
 ### Phase 2 — Memory and vision
 
-- [ ] **P2-01:** Add Room storage for memories/persona, provenance, timestamps, expiry, and bounded keyword/full-text retrieval.
-- [ ] **P2-02:** Add confirm/edit/remember/forget/export/delete controls, including removal of derived summaries and indexes.
-- [ ] **P2-03:** Verify memory persistence across restart and deletion from subsequent model context.
-- [ ] **P2-04:** Add CameraX preview, front/rear selection, explicit snapshot capture, resize, temporary-file cleanup, and visible camera/upload state.
-- [ ] **P2-05:** Verify an answer about a user-captured image through the selected provider; confirm cancel/background releases the camera and uploaded context is clear to the user.
+- [x] **P2-01:** Room stores memories/persona, provenance, timestamps, confirmation and expiry; bounded literal-token FTS retrieval returns up to eight confirmed facts from at most 200. Legacy persona migrates once; schema is committed. See docs/PHASE2.md and Experiment 006.
+- [x] **P2-02:** Added draft/confirm/edit/remember/forget, JSON export and delete controls. Room maintains index deletion; edits/forget/expiry clear derived chat context with durable invalidation before mutation. No summaries/embeddings are stored.
+- [ ] **P2-03:** File-backed Room close/reopen, edit/forget/expiry, FTS deletion and rebuilt prompt checks pass on the Pixel. Integrated app-process restart/forget with real model turns remains open; see docs/PHASE2.md.
+- [x] **P2-04:** CameraX front/rear preview, explicit capture/review/send, orientation-aware resizing/metadata removal, bounded temporary data, cleanup and visible camera/upload states implemented. Camera closes at review, Cancel and background.
+- [ ] **P2-05:** User-captured image answer through the selected provider remains open. Snapshot uses the normal conversation path; local camera/encoder checks are recorded in Experiment 006. Follow the explicit live trial in docs/PHASE2.md.
 
 ### Phase 3 — Gmail and Drive skills using signed-in apps
 
