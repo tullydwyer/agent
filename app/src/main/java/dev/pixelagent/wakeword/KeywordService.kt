@@ -38,6 +38,7 @@ class KeywordService : Service() {
     private var worker: Thread? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private var startedAt = 0L
+    private var wakeWord = WakeWordSettings.DEFAULT
     @Volatile private var destroyed = false
     private val expire = Runnable { stopSelf() }
     private val tick = object : Runnable {
@@ -53,6 +54,7 @@ class KeywordService : Service() {
         if (intent?.action == "stop") { stopSelf(); return START_NOT_STICKY }
         if (running.get()) return START_NOT_STICKY
         if (HandsFreeService.state.value.active) { stopSelf(); return START_NOT_STICKY }
+        wakeWord = WakeWordSettings(this).phrase
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             mutableState.value = KeywordState(notice = "Microphone permission required")
             stopSelf(); return START_NOT_STICKY
@@ -62,7 +64,7 @@ class KeywordService : Service() {
         val stop = PendingIntent.getService(this, 1, Intent(this, KeywordService::class.java).setAction("stop"), PendingIntent.FLAG_IMMUTABLE)
         val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
         val notification = Notification.Builder(this, "keyword").setSmallIcon(R.drawable.ic_agent)
-            .setContentTitle("Pixel Agent microphone active").setContentText("Local keyword trial · say hello world · ends in 5 minutes")
+            .setContentTitle("Pixel Agent microphone active").setContentText("Local keyword trial · say $wakeWord · ends in 5 minutes")
             .setContentIntent(open).setOngoing(true).setVisibility(Notification.VISIBILITY_PUBLIC)
             .addAction(Notification.Action.Builder(null, "Stop", stop).build()).build()
         try {
@@ -94,7 +96,7 @@ class KeywordService : Service() {
                     joiner = "keyword/joiner-epoch-12-avg-2-chunk-16-left-64.int8.onnx"),
                     tokens = "keyword/tokens.txt", modelType = "zipformer2", numThreads = 1),
                 keywordsFile = "keyword/keywords.txt"))
-            stream = engine.createStream()
+            stream = engine.createStream(WakeWordSettings(this).tokens(wakeWord))
             check(stream.ptr != 0L)
             if (!running.get()) return
             val minBuffer = AudioRecord.getMinBufferSize(16000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
@@ -104,7 +106,7 @@ class KeywordService : Service() {
             check(recorder.state == AudioRecord.STATE_INITIALIZED)
             recorder.startRecording()
             check(recorder.recordingState == AudioRecord.RECORDSTATE_RECORDING)
-            publish("Listening locally for hello world")
+            publish("Listening locally for $wakeWord")
             val buffer = ShortArray(1600)
             while (running.get()) {
                 check(recorder.activeRecordingConfiguration?.isClientSilenced != true) { "Microphone capture was silenced" }

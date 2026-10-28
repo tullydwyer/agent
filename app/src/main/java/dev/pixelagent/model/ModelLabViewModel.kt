@@ -37,8 +37,13 @@ class ModelLabViewModel(application: Application) : AndroidViewModel(application
     private var job: Job? = null
     init { run("Ready to talk.") {
         refreshConnections()
-        if (provider.isConfigured) mutableState.update { it.copy(models = connection.catalog, selectedModel = provider.selectedModel) }
-        else if (state.value.connection != "Not connected") loadModels()
+        if (state.value.connection == "Not connected") clearModels()
+        else {
+            // Restore before fetching: a failed catalog refresh must not lose the user's choice.
+            if (!provider.isConfigured) provider.selectedModel = prefs.getString("model", null)
+            mutableState.update { it.copy(models = connection.catalog, selectedModel = provider.selectedModel) }
+            if (connection.catalog.isEmpty()) loadModels()
+        }
     } }
 
     private suspend fun refreshConnections() {
@@ -48,7 +53,8 @@ class ModelLabViewModel(application: Application) : AndroidViewModel(application
     }
     private fun clearModels() {
         provider.selectedModel = null
-        prefs.edit().remove("model").apply()
+        connection.catalog = emptyList()
+        // Keep the saved preference when signing out, reconnecting or switching accounts.
         mutableState.update { it.copy(models = emptyList(), selectedModel = null) }
     }
     fun signIn(client: String? = null, open: (Uri) -> Unit) = run("Connected. Ready to talk.") {
@@ -69,8 +75,8 @@ class ModelLabViewModel(application: Application) : AndroidViewModel(application
     fun fetchModels() = run("Account models loaded. Ready to talk.") { loadModels() }
     private suspend fun loadModels() {
         val choices = provider.models()
-        connection.catalog = choices
         check(choices.isNotEmpty()) { "No visible models are available for this account." }
+        connection.catalog = choices
         val selected = choices.firstOrNull { it.slug == prefs.getString("model", null) } ?: choices.first()
         provider.selectedModel = selected.slug
         prefs.edit().putString("model", selected.slug).apply()

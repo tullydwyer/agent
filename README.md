@@ -21,11 +21,12 @@
 
 The native Kotlin/Jetpack Compose app opens on an animated agent face with text
 conversation, **Talk to Pixel**, and **Start hands-free**. Choose 15 minutes,
-one hour (default), or eight hours. Say **hello world**, wait for the tone, then
+one hour (default), or eight hours. Say **Jenkins**, wait for the tone, then
 speak your message. Local recognition sends the transcript to your selected
 ChatGPT model, and the agent replies through the phone's offline voice. The
 agent listens for a follow-up after playback and a short cooldown, without another
-wake word. Silence returns it to waiting for **hello world**. Tap Stop in the app or its
+wake word. Silence returns it to waiting for your wake word. Change it under
+**Settings → Wake word**; the saved phrase applies to the next session. Tap Stop in the app or its
 persistent notification to end the session. Skills are optional and live in
 Settings; adding Gmail/Drive skills is separate work.
 
@@ -34,8 +35,10 @@ Microphone and notification access are required; sessions do not automatically
 resume after process death, force-stop or reboot. Without a hands-free session,
 conversation/audio stop when the app leaves the foreground. Settings contains
 account/model selection, persona, existing skill controls and speech/model tests.
-The selected account model is validated against its catalog on a fresh process
-start; completed history and persona remain on this phone.
+The selected model is saved on this phone and restored when the app opens, even
+if the model catalog cannot be refreshed. Reconnecting keeps your choice; a
+successful catalog refresh uses the first available model if that choice is no
+longer offered. Completed history and persona also remain on this phone.
 
 See [the Phase 4 guide](docs/PHASE4.md) for the wake engine, lifecycle limits and
 remaining live-voice/accuracy/battery checks. Implementation does not establish
@@ -48,7 +51,7 @@ an offline reasoning model. Speech-test transcripts are not uploaded automatical
 
 The original Phase 0 diagnostics retain a separate ChatGPT plan authentication/
 inference lab and five-minute keyword counter service. The main hands-free
-control now connects **hello world** to real conversation turns. The model lab
+control now connects your saved wake word to real conversation turns. The model lab
 tests text, a generated diagnostic image, a harmless function, and credential
 renewal. Credentials are encrypted with Android Keystore. Text/image/function
 turns, renewal, browser callback, and reconnect have passed on the Pixel account.

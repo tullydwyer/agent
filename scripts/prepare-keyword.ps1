@@ -15,7 +15,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Model extraction failed.' }
 $source = Join-Path $destination 'sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01'
 $assets = Join-Path $destination 'assets\keyword'
 New-Item -ItemType Directory -Force -Path $assets | Out-Null
-@('encoder-epoch-12-avg-2-chunk-16-left-64.int8.onnx', 'decoder-epoch-12-avg-2-chunk-16-left-64.onnx', 'joiner-epoch-12-avg-2-chunk-16-left-64.int8.onnx', 'tokens.txt', 'README.md') | ForEach-Object {
+@('encoder-epoch-12-avg-2-chunk-16-left-64.int8.onnx', 'decoder-epoch-12-avg-2-chunk-16-left-64.onnx', 'joiner-epoch-12-avg-2-chunk-16-left-64.int8.onnx', 'tokens.txt', 'bpe.model', 'README.md') | ForEach-Object {
     Copy-Item -LiteralPath (Join-Path $source $_) -Destination $assets
 }
 # A known tokenization from the upstream example; this spike detects "hello world".

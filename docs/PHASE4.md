@@ -15,7 +15,10 @@ existing subscription-backed conversation controller.
 3. Choose **15 min**, **1 hr** or **8 hr**, then **Start hands-free** while the app
    is visible. Allow microphone and notification access. The notification channel
    must also be enabled so Stop remains available.
-4. Say **hello world** by itself. Wait for the short tone, then say your message.
+4. Say **Jenkins** by itself (or the phrase saved under **Settings → Wake word**).
+   Stop any active listening session before changing it. The setting accepts 1–4
+   English words, saves locally, and applies to the next session.
+   Wait for the short tone, then say your message.
    Leave a pause after the wake word; speech spoken before recognition starts is
    not buffered. After each reply, wait for the next tone and keep talking; no
    repeated wake word is needed during that dialogue.
@@ -52,8 +55,9 @@ private-readout/unlock enforcement and wider phone integration remain Phase 5.
 - Selected because the existing Pixel/native prerecorded and user-confirmed
   offline/locked keyword spike worked. This establishes feasibility, not measured
   detection accuracy, acoustic turn-taking quality or superiority over alternatives.
-  `hello world` is retained with its known tokenization; custom wake phrases are
-  not exposed in this build.
+  Custom wake phrases use the bundled SentencePiece vocabulary and per-stream
+  keyword configuration. The default is `Jenkins`; individual phrases and accents
+  still need live accuracy trials. No training or model download is needed.
 - A partial CPU wake lock lasts only for the bounded session (maximum eight
   hours plus ten seconds of cleanup). This is software keyword detection, with
   no low-power hardware/all-day battery claim. An eight-hour option enables the

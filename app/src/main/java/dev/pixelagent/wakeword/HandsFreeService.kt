@@ -25,7 +25,7 @@ data class HandsFreeState(
     val detections: Int = 0,
     val elapsedMs: Long = 0,
     val durationMs: Long = SessionPolicy.DEFAULT_DURATION_MS,
-    val notice: String = "Hands-free is off. Start a session to say hello world.",
+    val notice: String = "Hands-free is off. Start a session to use the wake word.",
 )
 
 /** Explicit, bounded, non-sticky microphone session. Nothing starts at boot or after process death. */
@@ -44,6 +44,7 @@ class HandsFreeService : Service() {
     @Volatile private var running = false
     private var ending = "Session stopped. Tap Start hands-free to listen again."
     private var lastNotification = ""
+    private var wakeWord = WakeWordSettings.DEFAULT
     private var worker: Job? = null
     private val prefs by lazy { getSharedPreferences("hands_free", 0) }
 
@@ -52,6 +53,7 @@ class HandsFreeService : Service() {
         if (intent?.action == STOP) { finish("Session stopped. Tap Start hands-free to listen again."); return START_NOT_STICKY }
         if (running) return START_NOT_STICKY
         if (mutableState.value.active) { stopSelf(); return START_NOT_STICKY }
+        wakeWord = WakeWordSettings(this).phrase
         agent = AgentRuntime.get(application)
         val provider = AgentConnection.get(this).provider
         val notifications = getSystemService(NotificationManager::class.java)
@@ -107,12 +109,12 @@ class HandsFreeService : Service() {
                 var capture: KeywordCapture? = null
                 try {
                     // Keep ownership through cancellation during native initialization, so finally can release it.
-                    withContext(NonCancellable + Dispatchers.IO) { capture = KeywordCapture(this@HandsFreeService) }
+                    withContext(NonCancellable + Dispatchers.IO) { capture = KeywordCapture(this@HandsFreeService, wakeWord) }
                     ensureActive()
                     while (isActive && running) {
                         val detected = withContext(Dispatchers.IO) {
                             capture!!.awaitKeyword({ running }) {
-                                scope.launch { if (running) publish("Listening locally · say hello world", listening = true) }
+                                scope.launch { if (running) publish("Listening locally · say $wakeWord", listening = true) }
                             }
                         }
                         ensureActive()
@@ -143,7 +145,7 @@ class HandsFreeService : Service() {
                             mutableState.update { it.copy(followUp = true) }
                         }
                         mutableState.update { it.copy(followUp = false) }
-                        if (running) publish("No speech heard · returning to hello world")
+                        if (running) publish("No speech heard · returning to $wakeWord")
                     }
                 } catch (cancelled: CancellationException) {
                     if (cancelled is TimeoutCancellationException) finish("Voice turn timed out. Start a new session to retry.")

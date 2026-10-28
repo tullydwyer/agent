@@ -7,7 +7,8 @@ import android.media.MediaRecorder
 import com.k2fsa.sherpa.onnx.*
 
 /** Blocking CPU worker. Returns only AFTER releasing the mic, before STT may acquire it. */
-class KeywordCapture(context: Context) : AutoCloseable {
+class KeywordCapture(context: Context, phrase: String = WakeWordSettings(context).phrase) : AutoCloseable {
+    private val keywords = WakeWordSettings(context).tokens(phrase)
     private val engine = KeywordSpotter(context.assets, KeywordSpotterConfig(
         modelConfig = OnlineModelConfig(transducer = OnlineTransducerModelConfig(
             encoder = "keyword/encoder-epoch-12-avg-2-chunk-16-left-64.int8.onnx",
@@ -18,7 +19,7 @@ class KeywordCapture(context: Context) : AutoCloseable {
 
     @android.annotation.SuppressLint("MissingPermission") // Service checks; permission loss throws and ends session.
     fun awaitKeyword(running: () -> Boolean, onListening: () -> Unit): Boolean {
-        val stream = engine.createStream()
+        val stream = engine.createStream(keywords)
         var recorder: AudioRecord? = null
         try {
             check(stream.ptr != 0L)

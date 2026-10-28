@@ -28,6 +28,7 @@ import dev.pixelagent.ui.AgentHome
 import dev.pixelagent.wakeword.HandsFreeService
 import dev.pixelagent.wakeword.KeywordService
 import dev.pixelagent.wakeword.SessionPolicy
+import dev.pixelagent.wakeword.WakeWordSettings
 
 class MainActivity : ComponentActivity() {
     private val agentModel: AgentViewModel by viewModels()
@@ -48,6 +49,10 @@ class MainActivity : ComponentActivity() {
                 val session by HandsFreeService.state.collectAsStateWithLifecycle()
                 val keyword by KeywordService.state.collectAsStateWithLifecycle()
                 var settings by rememberSaveable { mutableStateOf(false) }
+                val wakeSettings = remember { WakeWordSettings(this@MainActivity) }
+                var wakeWord by remember { mutableStateOf(wakeSettings.phrase) }
+                var wakeDraft by rememberSaveable { mutableStateOf(wakeWord) }
+                var wakeError by rememberSaveable { mutableStateOf<String?>(null) }
                 BackHandler(enabled = settings) { settings = false }
                 var permissionAction by rememberSaveable { mutableStateOf("talk") }
                 var duration by rememberSaveable { mutableLongStateOf(SessionPolicy.DEFAULT_DURATION_MS) }
@@ -88,10 +93,24 @@ class MainActivity : ComponentActivity() {
                             onSettings = { settings = true }, onTalk = { requestMicrophone("talk") },
                             onStartSession = { requestMicrophone("session") }, onStopSession = ::stopHandsFree,
                             onCancel = { if (session.active) stopHandsFree() else agent.cancel() },
-                            onSend = { agent.send(it, modelLab.provider) }, duration = duration, onDuration = { duration = it })
+                            onSend = { agent.send(it, modelLab.provider) }, duration = duration, onDuration = { duration = it }, wakeWord = wakeWord)
                     } else {
                         LazyColumn(Modifier.fillMaxSize().padding(insets), contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                             item { TextButton(onClick = { settings = false }) { Text("← Back to agent") }; Text("Agent settings", style = MaterialTheme.typography.headlineMedium) }
+                            item { SettingsCard("Wake word") {
+                                OutlinedTextField(wakeDraft, { wakeDraft = it; wakeError = null },
+                                    label = { Text("Wake word or phrase") }, singleLine = true,
+                                    isError = wakeError != null, enabled = !session.active && !keyword.active,
+                                    modifier = Modifier.fillMaxWidth())
+                                Text(wakeError ?: "Saved wake word: $wakeWord. Use 1–4 English words. Changes apply to the next hands-free session.",
+                                    color = if (wakeError != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+                                Button(onClick = {
+                                    runCatching { wakeSettings.save(wakeDraft) }
+                                        .onSuccess { wakeWord = it; wakeDraft = it; wakeError = null }
+                                        .onFailure { wakeError = it.message ?: "Could not save this wake word." }
+                                }, enabled = !session.active && !keyword.active && wakeDraft != wakeWord) { Text("Save wake word") }
+                                if (session.active || keyword.active) Text("Stop the listening session to change the wake word.")
+                            } }
                             item { SettingsCard("ChatGPT connection") {
                                 Text("${cloud.connection} · Subscription only")
                                 Text("Messages, recent history, persona and activated skill context go to the selected online model. Speech recognition and playback run on this phone.")
@@ -102,6 +121,7 @@ class MainActivity : ComponentActivity() {
                                     TextButton(onClick = { modelLab.signIn(id) { startActivity(Intent(Intent.ACTION_VIEW, it)) } }, enabled = !state.busy && !cloud.busy && !session.active) { Text("Reconnect $label") }
                                 }
                                 OutlinedButton(onClick = modelLab::fetchModels, enabled = !state.busy && !cloud.busy && !session.active && cloud.connection != "Not connected") { Text("Refresh models") }
+                                cloud.selectedModel?.let { Text("Selected model: $it · Saved on this phone") }
                                 cloud.models.forEach { model ->
                                     TextButton(onClick = { modelLab.selectModel(model.slug) }, enabled = !state.busy && !cloud.busy && !session.active) { Text("${if (model.slug == cloud.selectedModel) "✓ " else ""}${model.name}") }
                                 }
@@ -137,7 +157,7 @@ class MainActivity : ComponentActivity() {
                                 TextButton(onClick = modelLab::cancel, enabled = cloud.busy) { Text("Cancel experiment") }
                                 Text(keyword.notice)
                                 OutlinedButton(onClick = { stopService(Intent(this@MainActivity, KeywordService::class.java)) }, enabled = keyword.active) { Text("Stop old keyword trial") }
-                                Text("Wake engine: sherpa-onnx 1.12.14 · GigaSpeech 3.3M · hello world. Keyword audio is discarded locally. No camera capture.")
+                                Text("Wake engine: sherpa-onnx 1.12.14 · GigaSpeech 3.3M · $wakeWord. Keyword audio is discarded locally. No camera capture.")
                             } }
                         }
                     }

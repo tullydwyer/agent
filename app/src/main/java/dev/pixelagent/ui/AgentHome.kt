@@ -38,7 +38,7 @@ fun AgentHome(
     recovery: String, modifier: Modifier = Modifier,
     onSettings: () -> Unit, onTalk: () -> Unit, onStartSession: () -> Unit,
     onStopSession: () -> Unit, onCancel: () -> Unit, onSend: (String) -> Unit,
-    duration: Long, onDuration: (Long) -> Unit,
+    duration: Long, onDuration: (Long) -> Unit, wakeWord: String,
 ) {
     var draft by rememberSaveable { mutableStateOf("") }
     val connected = cloud.selectedModel != null && !cloud.busy
@@ -50,7 +50,7 @@ fun AgentHome(
         agent.audio == AudioState.LISTENING -> "I’m listening"
         agent.audio == AudioState.TRANSCRIBING -> "Hearing you"
         agent.busy -> "Thinking"
-        session.listening -> "Say hello world"
+        session.listening -> "Say $wakeWord"
         session.active -> "Getting ready"
         cloud.busy -> "Connecting"
         !connected -> "Let’s get connected"
@@ -77,8 +77,8 @@ fun AgentHome(
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         if (session.active) Text(session.notice, style = MaterialTheme.typography.titleSmall)
                         Text(if (session.active) "${session.detections} wakes · ${session.elapsedMs / 60000} / ${session.durationMs / 60000} min"
-                            else "Say “hello world” once, then talk after each tone. I’ll listen again after replying. Silence returns to the wake word.", style = MaterialTheme.typography.bodyMedium)
-                        if (session.active) Text("Keep talking after the tone. Silence returns to hello world. Stop here or in the notification.", style = MaterialTheme.typography.bodySmall)
+                            else "Say “$wakeWord” once, then talk after each tone. I’ll listen again after replying. Silence returns to the wake word.", style = MaterialTheme.typography.bodyMedium)
+                        if (session.active) Text("Keep talking after the tone. Silence returns to $wakeWord. Stop here or in the notification.", style = MaterialTheme.typography.bodySmall)
                         if (!session.active) {
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 listOf(15L, 60L, 480L).forEach { minutes ->

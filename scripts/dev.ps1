@@ -49,7 +49,7 @@ try {
     }
 
     if ($Action -eq 'build') {
-        if (-not (Test-Path -LiteralPath '.tools\keyword\assets\keyword\keywords.txt')) {
+        if (-not (Test-Path -LiteralPath '.tools\keyword\assets\keyword\bpe.model')) {
             & (Join-Path $PSScriptRoot 'prepare-keyword.ps1')
         }
         & .\gradlew.bat assembleDebug lintDebug testDebugUnitTest --console=plain
