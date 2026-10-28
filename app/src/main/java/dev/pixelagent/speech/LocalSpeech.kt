@@ -21,6 +21,7 @@ class LocalSpeech(
     private val onFinalTranscript: (String) -> Unit = {},
     private val onSpeechEnded: () -> Unit = {},
     private val onPlaybackStart: () -> Unit = {},
+    private val onRecognitionFinished: () -> Unit = {},
 ) {
     private val appContext = context.applicationContext
     private var recognizer: SpeechRecognizer? = null
@@ -77,6 +78,7 @@ class LocalSpeech(
         stop()
         if (!recognitionAvailable) {
             onNotice("No on-device recognizer is installed. No cloud fallback was used.")
+            onRecognitionFinished()
             return
         }
         try {
@@ -100,6 +102,7 @@ class LocalSpeech(
                     releaseRecognizer()
                     onState(AudioState.IDLE)
                     onNotice(recognitionError(error))
+                    onRecognitionFinished()
                 }
                 override fun onResults(results: Bundle?) {
                     if (closed || generation != recognitionGeneration) return
@@ -109,6 +112,7 @@ class LocalSpeech(
                     releaseRecognizer()
                     onState(AudioState.IDLE)
                     if (text.isNotBlank()) onFinalTranscript(text) else onNotice("No speech detected. Try again.")
+                    onRecognitionFinished()
                 }
                 override fun onPartialResults(partialResults: Bundle?) {
                     if (closed || generation != recognitionGeneration) return
@@ -129,6 +133,7 @@ class LocalSpeech(
             releaseRecognizer()
             onState(AudioState.IDLE)
             onNotice("Could not start local recognition: ${exception.javaClass.simpleName}.")
+            onRecognitionFinished()
         }
     }
 

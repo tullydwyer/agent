@@ -22,6 +22,7 @@ data class AgentState(
     val messages: List<ChatMessage> = emptyList(),
     val persona: String = "Be helpful, concise and conversational.",
     val busy: Boolean = false,
+    val awaitingTranscript: Boolean = false,
     val partial: String = "",
     val latency: String = "Voice latency: no samples yet.",
     val textLatency: String = "Text latency: no samples yet.",

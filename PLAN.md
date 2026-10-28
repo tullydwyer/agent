@@ -12,7 +12,7 @@ confirmed offline speech and a short locked-phone keyword/Stop trial. See
 
 Last updated: 28 October 2026 (Australia/Brisbane).
 
-**Current stage:** phase 0 complete; phase 1 code implemented, with voice latency validation still open. The conversation/skill build is installed on the Pixel; implementation completion does not close the remaining measurement gate.
+**Current stage:** phase 0 complete; phase 1 code implemented with voice latency validation open. Phase 4 hands-free code and a visible conversation interface are implemented at the user’s request, ahead of memory/app-control/Google skills. Device and measurement evidence is tracked in Experiment 005; implementation does not close the sustained accuracy/battery gate.
 
 **User decision (28 October):** the phone and its accounts/identity are dedicated
 to the agent. Setup should be ordinary sign-in to installed apps plus one-time
@@ -31,7 +31,7 @@ conditions, results, failures, and dates in [the experiment log](docs/EXPERIMENT
 then update the matching task and phase status here. Keep task IDs stable as work
 progresses. A phase is complete only when its exit gate in section 4 is satisfied.
 
-**Next work:** finish the phase 1 voice-turn latency distribution and playback/Stop trial on the Pixel. See [the Phase 1 guide](docs/PHASE1.md) and Experiment 004 for controller/skill checks and exact remaining evidence. Direct ChatGPT plan usage is selected for the tested personal local
+**Next work:** collect Phase 4 wake/battery measurements and verify silence fallback. The user confirmed the integrated voice loop and automatic follow-ups without repeating the wake word on the Pixel (Experiment 005). Skills will be added later at the user’s request. Also finish the phase 1 voice-turn latency distribution and playback/Stop trial. See [the Phase 1 guide](docs/PHASE1.md) and Experiment 004 for controller/skill checks and exact remaining evidence. Direct ChatGPT plan usage is selected for the tested personal local
 prototype. Then prove the shared app-control driver (P6 tasks, retained IDs)
 before implementing Gmail/Drive skills. Counted accuracy and unplugged battery comparisons remain Phase 4
 benchmarks. See [the lab guide](docs/PHASE0.md) and Experiment 002.
@@ -238,7 +238,7 @@ Estimates below are engineering estimates for one developer already comfortable 
 | App-control prerequisite (P6 task IDs retained) | Research only; required before phase 3 | Unestimated | On a stock Pixel, demonstrate observe/action/verify in a harmless app without root or ongoing ADB, then validate signed-in Gmail/Drive sessions and required Android permissions. |
 | 2. Memory and vision | Not started | 1 week | Confirm/edit/forget facts across restarts; answer about an explicitly captured image; camera resources release on cancel/background. |
 | 3. Signed-in app skills | Not started; depends on app-control prerequisite | Re-estimate after UI-control spike | Gmail and Drive skills operate signed-in apps. Search/read mail, send one test email under operating authority, read a document, and create a Drive note. Verify session expiry, account identity, changed UI, cancellation, and duplicate-action handling. |
-| 4. Hands-free sessions | Not started | 1–2 weeks | Keyword -> utterance -> reply with screen off in a user-started session; Stop works; measure false wakes, missed wakes, and incremental battery use. |
+| 4. Hands-free sessions | Code implemented; integrated voice and sustained measurement gates open | 1–2 weeks | Keyword -> utterance -> reply with screen off in a user-started session; Stop works; measure false wakes, missed wakes, and incremental battery use. |
 | 5. Daily-use hardening | Not started | 1–2 weeks | Lock-screen privacy, calls/headsets, process recreation, deletion/export, permission changes, bounded storage, and several days of real use. |
 
 The original **6–10 week** personal-MVP estimate predates the skill runtime and
@@ -365,11 +365,11 @@ superseded by the user's signed-in-phone decision on 28 October 2026.
 
 ### Phase 4 — Hands-free sessions
 
-- [ ] **P4-01:** Select a keyword engine/model after the phase-0 spike; record licensing, model size, quality, and offline behavior.
-- [ ] **P4-02:** Implement user-started microphone foreground-service sessions with correct permissions, notification, Stop action, and visible listening state.
-- [ ] **P4-03:** Integrate keyword detection, utterance recognition, model turns, and playback without microphone conflicts or self-triggering.
+- [x] **P4-01:** Select the pinned sherpa-onnx 1.12.14/GigaSpeech 3.3M English model from the phase-0 spike. Engine/model Apache-2.0 notices are bundled; ONNX model files total 6,033,728 bytes. Offline evidence and unmeasured quality limits are recorded in docs/PHASE4.md. Keep hello world for this implementation; no accuracy-rate claim.
+- [x] **P4-02:** Implement user-started 15-minute/one-hour/eight-hour microphone/media-playback foreground sessions, microphone/notification checks, notification Stop, visible listening state and animated agent face. The application-owned conversation runtime outlives the Activity while a session is active.
+- [x] **P4-03:** Integrate keyword → microphone release → tone → local utterance recognition → streaming model/local playback → 1.5-second cooldown → automatic follow-up listening. Silence/no-match or a 12-second utterance window returns to keyword capture. Await transcript dispatch as well as HTTP/playback completion. Errors stop without inference retry; no parallel manual speech/diagnostic session. User confirmed live voice replies and automatic follow-ups on the Pixel; silence fallback and sustained self-trigger checks remain separate evidence.
 - [ ] **P4-04:** Measure intended/missed/false wakes, locked-screen operation, and incremental eight-hour battery drain against section 4 targets.
-- [ ] **P4-05:** Verify service termination, reboot/force-stop recovery messaging, and explicit restart behavior; document supported session limits.
+- [ ] **P4-05:** Verify service termination, reboot/force-stop recovery messaging, and explicit restart behavior; document supported session limits. Code uses START_NOT_STICKY, no boot receiver, persisted interruption messaging, bounded session/wake lock, permission/focus loss checks, and explicit restart. See Experiment 005 for verified lifecycle cases; untested cases remain open.
 
 ### Phase 5 — Daily-use hardening
 

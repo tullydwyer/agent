@@ -148,5 +148,8 @@ Only a detection count and elapsed time are shown; no private readout is possibl
   packaged with the model assets; the AAR's runtime version is not independently
   measured by this lab.
 
-The selected keyword and model are provisional. Phase 4 still needs comparative
-quality, false-wake, sustained battery, call/headset, and privacy testing.
+The keyword and model were retained for the Phase 4 implementation. Phase 4 still
+needs counted quality, false-wake and sustained battery tests; call/headset and
+privacy hardening remain later gates. The original five-minute counter is a lab
+service; use the main screen's hands-free control for conversation. See
+[the Phase 4 guide](PHASE4.md).

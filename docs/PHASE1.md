@@ -1,5 +1,13 @@
 # Phase 1 conversation and skills
 
+Phase 4 navigation update (28 October 2026): the main screen now shows the agent
+face, **Talk to Pixel** (formerly Push to talk), text input and hands-free controls.
+Account/model, persona, skills and diagnostic tests are under **Settings**.
+Fresh-process startup restores a valid saved account model from its catalog.
+Leaving the Activity cancels one-shot turns; an explicitly started hands-free
+service keeps its application-owned conversation runtime alive. See
+[the Phase 4 guide](PHASE4.md) for that mode and its remaining validation gates.
+
 The Android app, speech recognition/playback, skill loader, and storage run on
 the Pixel. Reasoning runs online through the signed-in ChatGPT plan at
 `https://api.openai.com/v1/responses`. Requests contain the current message,
@@ -13,7 +21,8 @@ Fetch account models in the model lab, select one, then use Message/Send or Push
 to talk. Voice replies play in sentence-sized chunks with an installed offline
 English voice. Stop / cancel cancels the current HTTP call and local audio,
 invalidates delayed callbacks, and immediately permits another turn. Leaving the
-activity cancels; configuration changes retain the ViewModel turn.
+activity cancels unless a hands-free service owns the session; configuration
+changes retain the application-owned turn.
 
 Only completed user/assistant exchanges are saved. A partial reply may already
 have been spoken before a later error; it is not saved as a completed exchange.

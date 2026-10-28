@@ -28,12 +28,18 @@ data class ModelLabState(
 )
 
 class ModelLabViewModel(application: Application) : AndroidViewModel(application) {
-    private val auth = PlanUsageAuth(CredentialStore(application))
-    val provider = PlanUsageProvider(auth)
+    private val connection = AgentConnection.get(application)
+    private val auth = connection.auth
+    val provider = connection.provider
+    private val prefs = application.getSharedPreferences("model_selection", 0)
     private val mutableState = MutableStateFlow(ModelLabState())
     val state = mutableState.asStateFlow()
     private var job: Job? = null
-    init { run("Saved connections loaded") { refreshConnections() } }
+    init { run("Ready to talk.") {
+        refreshConnections()
+        if (provider.isConfigured) mutableState.update { it.copy(models = connection.catalog, selectedModel = provider.selectedModel) }
+        else if (state.value.connection != "Not connected") loadModels()
+    } }
 
     private suspend fun refreshConnections() {
         val accounts = auth.accounts()
@@ -42,32 +48,38 @@ class ModelLabViewModel(application: Application) : AndroidViewModel(application
     }
     private fun clearModels() {
         provider.selectedModel = null
+        prefs.edit().remove("model").apply()
         mutableState.update { it.copy(models = emptyList(), selectedModel = null) }
     }
-    fun signIn(client: String? = null, open: (Uri) -> Unit) = run("Sign-in completed. Fetch models to verify plan permission.") {
+    fun signIn(client: String? = null, open: (Uri) -> Unit) = run("Connected. Ready to talk.") {
         val application = getApplication<Application>()
         AuthSessionService.cancelAttempt = ::cancel
         try {
             application.startForegroundService(Intent(application, AuthSessionService::class.java))
             mutableState.update { it.copy(result = "Finish authorization in the system browser, then return to Pixel Agent.") }
-            auth.signIn(client, open); clearModels(); refreshConnections()
+            auth.signIn(client, open); clearModels(); refreshConnections(); loadModels()
         } finally {
             AuthSessionService.cancelAttempt = null
             application.stopService(Intent(application, AuthSessionService::class.java))
         }
     }
-    fun selectAccount(client: String) = run("Connection selected. Fetch models again.") {
-        auth.select(client); clearModels(); refreshConnections()
+    fun selectAccount(client: String) = run("Connection selected. Ready to talk.") {
+        auth.select(client); clearModels(); refreshConnections(); loadModels()
     }
-    fun fetchModels() = run("Account model catalog loaded; select a model and run an experiment.") {
+    fun fetchModels() = run("Account models loaded. Ready to talk.") { loadModels() }
+    private suspend fun loadModels() {
         val choices = provider.models()
+        connection.catalog = choices
         check(choices.isNotEmpty()) { "No visible models are available for this account." }
-        provider.selectedModel = choices.first().slug
-        mutableState.update { it.copy(models = choices, selectedModel = choices.first().slug) }
+        val selected = choices.firstOrNull { it.slug == prefs.getString("model", null) } ?: choices.first()
+        provider.selectedModel = selected.slug
+        prefs.edit().putString("model", selected.slug).apply()
+        mutableState.update { it.copy(models = choices, selectedModel = selected.slug) }
     }
     fun selectModel(slug: String) {
         if (state.value.busy || state.value.models.none { it.slug == slug }) return
         provider.selectedModel = slug
+        prefs.edit().putString("model", slug).apply()
         mutableState.update { it.copy(selectedModel = slug) }
     }
     fun refreshTokens() = run("Credentials renewed and saved. Run a text trial to verify the renewed access token.") { auth.accessToken(true) }
@@ -116,5 +128,5 @@ class ModelLabViewModel(application: Application) : AndroidViewModel(application
         // Blocking IO must unwind before another operation can replace rotating credentials.
         mutableState.update { it.copy(result = "Experiment cancelled. Any partial response is discarded.") }
     }
-    override fun onCleared() { auth.cancel(); provider.cancel() }
+    override fun onCleared() { if (state.value.busy) cancel() }
 }

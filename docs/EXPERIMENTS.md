@@ -326,3 +326,87 @@ Text Send-to-first-delta and voice end-of-speech-to-first-playback are recorded
 separately, with at most 100 samples each; attempts that reached first output may
 still fail later. No wake accuracy, all-day reliability or battery claims follow.
 See [PHASE1.md](PHASE1.md) for the repeatable manual trial and runtime limits.
+
+## Experiment 005 — Hands-free conversation and agent interface (28 October 2026)
+
+### Scope and implementation
+
+User requested Phase 4 ahead of later skills: see and talk to the agent now.
+Added a Compose vector face with listening/thinking/speaking states, fixed above
+the conversation, direct Talk/text controls, and optional 15-minute/one-hour/
+eight-hour hands-free sessions. Account/model, persona, existing skills and
+diagnostics moved to Settings; no new skills, camera or app-control tools added.
+
+The explicitly started microphone/media-playback foreground service owns the
+session. Conversation moved into an application-owned runtime shared with the
+Activity, using one auth/provider instance so credential rotation and requests
+are not duplicated on Activity recreation. Valid model selection is restored
+from the account catalog after a fresh process start.
+
+Retained the pinned local sherpa-onnx 1.12.14/GigaSpeech 3.3M English model and
+known `hello world` tokenization. The detector releases AudioRecord before a
+tone and local recognizer start. It waits for transcript dispatch, model work
+and the last TTS utterance, then cools down for 1.5 seconds before listening for
+a follow-up without another wake word. Silence/no-match or a 12-second utterance
+window returns to keyword capture.
+Errors stop without automatic inference retry. The notification exposes Stop;
+session expiry, focus/permission checks and non-sticky termination require an
+explicit new start. A persisted interruption marker explains unexpected process
+termination after reopening. No boot receiver or automatic turn replay exists.
+
+### Verification
+
+- Stock USB-connected Pixel 7, existing Android/API 36 installation and signed-in
+  account; installed with `adb install -r`, retaining credentials/history.
+- Assembly, lint and **39 JVM tests passed** (zero failures/skips). Four added
+  cases cover recognizer idle-before-transcript dispatch, completed HTTP with
+  playback still active, failure termination, bounded session durations and opening follow-up windows
+  only for a new completed reply (never replaying the prior reply after silence).
+  Lint reports zero errors and 27 warnings, including upstream dependency/native
+  alignment/KTX and Intent SAM false positives. No 16 KB-device claim is added.
+- Initial device run passed native wake listening with screen off and the actual
+  notification Stop PendingIntent, including recording/notification release.
+  The runner printed `OK (2 tests)`, but Android TestRunner logs showed the
+  subsequent expiry test was skipped by a secure-keyguard assumption. This was
+  not counted as expiry evidence. Combined expiry/restart and screen-off checks
+  into one ordered trial and made the initial-unlock requirement an assertion.
+- After normal user unlocking, the combined **one-test device trial passed in
+  7.795 seconds**, with no assumptions/skips: short session expiration with no
+  automatic restart; explicit fresh session and actual native microphone capture;
+  two seconds of screen-off listening; zero wakes in that short quiet interval;
+  sending the notification's Stop PendingIntent; no remaining app recording
+  configurations or hands-free notification. These checks request no model
+  inference intentionally; account catalog lookup may use the network.
+- Added `scripts/dev.ps1 test-phase4` to build/update and invoke the lifecycle
+  trial directly without Gradle's potentially uninstalling connected-test cleanup.
+- A code review caught a transient IDLE state before final-transcript dispatch;
+  added an explicit awaiting-transcript state so it cannot rearm keyword capture
+  during that handoff. Cleanup also retains native ownership during initialization
+  cancellation and reports stopped only after recorder/model release.
+
+- The user confirmed the live wake → message → model → audible reply path worked,
+  then requested ongoing conversation instead of repeating the wake word after
+  every reply. UI inspection on `gpt-6.1-sol` showed two wakes, a completed reply
+  and return to local keyword listening. This is a short success observation,
+  not a detection-rate or latency-distribution measurement.
+- Updated the loop to listen again after each completed reply, with a tone and
+  1.5-second speaker-tail pause. Silence/no-match or a 12-second recognition limit
+  returns to wake-word mode. Build/lint/all 39 JVM tests passed and this revision
+  was installed/launched while retaining sign-in/history. The user then confirmed:
+  “Yes, follow-ups work without the wake word.” This establishes a successful
+  live automatic follow-up on the Pixel; attempt count and timing were not
+  supplied. Silence fallback and sustained self-trigger behavior remain separate
+  checks.
+
+### Remaining evidence
+
+The original integrated live wake/message/model/audible-reply/rearm path is
+user-confirmed, as is automatic follow-up without another wake word. Silence
+fallback still needs a specific live check. Counted 50-attempt quiet/TV/locked detection
+trials, eight-hour false-wake exposure and repeated unplugged idle/session
+battery comparisons remain unmeasured. No detection rate, low-power or all-day
+reliability claim follows from the short trials. Phase 1 voice latency samples
+remain a separate gate. Force-stop/reboot messaging, live permission/focus loss,
+call/headset handling and private-readout hardening are not yet device-validated
+for this implementation. See [PHASE4.md](PHASE4.md) for reproducible procedures;
+P4-04/P4-05 and the overall Phase 4 exit gate remain open.

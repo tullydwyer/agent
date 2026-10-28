@@ -52,6 +52,7 @@ class KeywordService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == "stop") { stopSelf(); return START_NOT_STICKY }
         if (running.get()) return START_NOT_STICKY
+        if (HandsFreeService.state.value.active) { stopSelf(); return START_NOT_STICKY }
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             mutableState.value = KeywordState(notice = "Microphone permission required")
             stopSelf(); return START_NOT_STICKY

@@ -1,238 +1,167 @@
 package dev.pixelagent
 
 import android.Manifest
-import android.content.pm.PackageManager
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
-import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.pixelagent.conversation.AgentViewModel
 import dev.pixelagent.conversation.AudioState
 import dev.pixelagent.model.ModelLabViewModel
+import dev.pixelagent.ui.AgentHome
+import dev.pixelagent.wakeword.HandsFreeService
 import dev.pixelagent.wakeword.KeywordService
+import dev.pixelagent.wakeword.SessionPolicy
 
 class MainActivity : ComponentActivity() {
-    private val agent: AgentViewModel by viewModels()
+    private val agentModel: AgentViewModel by viewModels()
+    private val agent get() = agentModel.runtime
     private val modelLab: ModelLabViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            MaterialTheme(colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()) {
+            MaterialTheme(colorScheme = darkColorScheme(
+                primary = Color(0xFF85E8D5), onPrimary = Color(0xFF052C27),
+                background = Color(0xFF0B1219), surface = Color(0xFF131F2A),
+                surfaceContainer = Color(0xFF182733),
+            )) {
                 val state by agent.state.collectAsStateWithLifecycle()
                 val cloud by modelLab.state.collectAsStateWithLifecycle()
+                val session by HandsFreeService.state.collectAsStateWithLifecycle()
                 val keyword by KeywordService.state.collectAsStateWithLifecycle()
-                var speechTestPermissionPending by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
-                var keywordPermissionPending by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+                var settings by rememberSaveable { mutableStateOf(false) }
+                BackHandler(enabled = settings) { settings = false }
+                var permissionAction by rememberSaveable { mutableStateOf("talk") }
+                var duration by rememberSaveable { mutableLongStateOf(SessionPolicy.DEFAULT_DURATION_MS) }
                 val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-                    if (granted) startKeywordSession()
+                    if (granted) startHandsFree(duration) else agent.showNotice("Allow notifications to keep the hands-free Stop control visible, then try again.")
                 }
-                val microphonePermission = rememberLauncherForActivityResult(
-                    ActivityResultContracts.RequestPermission()
-                ) { granted ->
-                    if (granted) {
-                        if (keywordPermissionPending) {
-                            if (Build.VERSION.SDK_INT >= 33) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS) else startKeywordSession()
-                        } else if (speechTestPermissionPending) agent.listenTest() else agent.listen(modelLab.provider)
+                fun startSessionWithNotifications() {
+                    if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
+                        notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    else startHandsFree(duration)
+                }
+                val microphonePermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+                    if (granted) when (permissionAction) {
+                        "session" -> startSessionWithNotifications()
+                        "test" -> agent.listenTest()
+                        else -> agent.listen(modelLab.provider)
                     } else agent.permissionDenied()
-                    speechTestPermissionPending = false
-                    keywordPermissionPending = false
                 }
-                Scaffold { insets ->
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize().padding(insets),
-                        contentPadding = PaddingValues(24.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp),
-                    ) {
-                        item {
-                            Text("Pixel Agent", style = MaterialTheme.typography.headlineLarge)
-                            Text("Personal assistant · phase 1", style = MaterialTheme.typography.labelLarge)
+                fun requestMicrophone(action: String) {
+                    permissionAction = action
+                    if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED)
+                        microphonePermission.launch(Manifest.permission.RECORD_AUDIO)
+                    else when (action) {
+                        "session" -> startSessionWithNotifications()
+                        "test" -> agent.listenTest()
+                        else -> agent.listen(modelLab.provider)
+                    }
+                }
+                Scaffold(containerColor = MaterialTheme.colorScheme.background) { insets ->
+                    if (!settings) {
+                        val recovery = remember(session.active) {
+                            val prefs = getSharedPreferences("hands_free", 0)
+                            if (prefs.getBoolean("interrupted", false) && !session.active)
+                                "The previous session ended outside the app. Listening is off; explicitly start a new session."
+                            else prefs.getString("last_stop", "").orEmpty()
                         }
-                        item {
-                            LabCard("Status") {
-                                Text(state.audio.label, style = MaterialTheme.typography.titleLarge)
-                                Text(state.turnStatus.label)
-                                if (cloud.busy) Text("Online model experiment in progress")
-                                Text(state.notice)
-                                Text(state.latency)
-                                Text(state.textLatency)
-                                Text("Camera off · Keyword ${if (keyword.active) "active" else "off"} · ${cloud.connection}")
-                            }
-                        }
-                        item {
-                            LabCard("Conversation") {
-                                var draft by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf("") }
-                                Text("Speech and storage run on this phone. ChatGPT reasoning runs online; messages, persona and relevant skill context are sent to the selected model.")
-                                state.messages.forEach { message ->
-                                    SelectionContainer { Text("${if (message.role == "user") "You" else "Assistant"}: ${message.text}") }
+                        AgentHome(state, cloud, session, keyword.active, recovery, Modifier.padding(insets),
+                            onSettings = { settings = true }, onTalk = { requestMicrophone("talk") },
+                            onStartSession = { requestMicrophone("session") }, onStopSession = ::stopHandsFree,
+                            onCancel = { if (session.active) stopHandsFree() else agent.cancel() },
+                            onSend = { agent.send(it, modelLab.provider) }, duration = duration, onDuration = { duration = it })
+                    } else {
+                        LazyColumn(Modifier.fillMaxSize().padding(insets), contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                            item { TextButton(onClick = { settings = false }) { Text("← Back to agent") }; Text("Agent settings", style = MaterialTheme.typography.headlineMedium) }
+                            item { SettingsCard("ChatGPT connection") {
+                                Text("${cloud.connection} · Subscription only")
+                                Text("Messages, recent history, persona and activated skill context go to the selected online model. Speech recognition and playback run on this phone.")
+                                Text(cloud.result)
+                                Button(onClick = { modelLab.signIn { startActivity(Intent(Intent.ACTION_VIEW, it)) } }, enabled = !state.busy && !cloud.busy && !session.active) { Text("Continue with ChatGPT") }
+                                cloud.accounts.forEach { (id, label) ->
+                                    OutlinedButton(onClick = { modelLab.selectAccount(id) }, enabled = !state.busy && !cloud.busy && !session.active) { Text("Use $label") }
+                                    TextButton(onClick = { modelLab.signIn(id) { startActivity(Intent(Intent.ACTION_VIEW, it)) } }, enabled = !state.busy && !cloud.busy && !session.active) { Text("Reconnect $label") }
                                 }
-                                if (state.partial.isNotBlank()) SelectionContainer { Text("Assistant (streaming): ${state.partial}") }
-                                OutlinedTextField(value = draft, onValueChange = { draft = it.take(4000) }, label = { Text("Message") }, modifier = Modifier.fillMaxWidth())
-                                Button(onClick = { agent.send(draft, modelLab.provider); if (cloud.selectedModel != null && draft.isNotBlank()) draft = "" }, enabled = !state.busy && !cloud.busy && !keyword.active && cloud.selectedModel != null) { Text("Send") }
-                                Button(onClick = {
-                                    if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) agent.listen(modelLab.provider)
-                                    else microphonePermission.launch(Manifest.permission.RECORD_AUDIO)
-                                }, enabled = !state.busy && state.audio == AudioState.IDLE && !cloud.busy && !keyword.active && cloud.selectedModel != null && state.localRecognitionAvailable) { Text("Push to talk") }
-                                OutlinedButton(onClick = agent::cancel, enabled = state.busy || state.audio != AudioState.IDLE) { Text("Stop / cancel") }
-                                OutlinedTextField(value = state.persona, onValueChange = agent::setPersona, label = { Text("Assistant persona") }, modifier = Modifier.fillMaxWidth())
-                            }
-                        }
-
-                        item {
-                            LabCard("Agent Skills") {
-                                Text("Bundled instructions and resources can be selected here or loaded by the assistant. Active skills are restored on this phone.")
-                                OutlinedButton(onClick = { agent.setSkillsAllowed(!state.skillsAllowed) }) {
-                                    Text(if (state.skillsAllowed) "Disable skill loading" else "Enable skill loading")
+                                OutlinedButton(onClick = modelLab::fetchModels, enabled = !state.busy && !cloud.busy && !session.active && cloud.connection != "Not connected") { Text("Refresh models") }
+                                cloud.models.forEach { model ->
+                                    TextButton(onClick = { modelLab.selectModel(model.slug) }, enabled = !state.busy && !cloud.busy && !session.active) { Text("${if (model.slug == cloud.selectedModel) "✓ " else ""}${model.name}") }
                                 }
+                                TextButton(onClick = modelLab::signOut, enabled = !state.busy && !cloud.busy && !session.active && cloud.connection != "Not connected") { Text("Sign out") }
+                            } }
+                            item { SettingsCard("Identity and local speech") {
+                                OutlinedTextField(state.persona, agent::setPersona, label = { Text("Agent persona") }, enabled = !state.busy && !session.active, modifier = Modifier.fillMaxWidth())
+                                Text("Local recognizer: ${if (state.localRecognitionAvailable) "available" else "unavailable"}")
+                                Text("Offline voice: ${if (state.ttsInitializing) "checking…" else state.localVoice ?: "not installed"}")
+                                Text("${Build.MODEL} · Android ${Build.VERSION.RELEASE} · API ${Build.VERSION.SDK_INT}")
+                                Button(onClick = { requestMicrophone("test") }, enabled = !state.busy && !cloud.busy && !session.active && !keyword.active && state.audio == AudioState.IDLE) { Text("Test local recognition") }
+                                OutlinedButton(onClick = agent::speak, enabled = !state.busy && !cloud.busy && !session.active && !keyword.active && state.audio == AudioState.IDLE) { Text("Test local voice") }
+                                TextButton(onClick = { if (session.active) stopHandsFree() else agent.cancel() }) { Text("Stop audio") }
+                                Text(state.transcript); Text(state.notice); Text(state.latency); Text(state.textLatency)
+                            } }
+                            item { SettingsCard("Skills · optional") {
+                                Text("You can add skills later. Conversation and hands-free sessions work without activating a skill. Imports and script runtimes are not implemented yet.")
+                                OutlinedButton(onClick = { agent.setSkillsAllowed(!state.skillsAllowed) }, enabled = !state.busy && !session.active) { Text(if (state.skillsAllowed) "Disable skill loading" else "Enable skill loading") }
                                 state.skillCatalog.forEach { skill ->
                                     Text("${skill.name}: ${skill.description}")
-                                    if (skill.unavailable != null) Text("Unavailable: ${skill.unavailable}")
-                                    OutlinedButton(onClick = { agent.toggleSkill(skill.name) }, enabled = !state.busy && state.skillsAllowed && skill.unavailable == null) {
-                                        Text("${if (skill.name in state.activeSkills) "Deactivate" else "Activate"} ${skill.name}")
-                                    }
+                                    skill.unavailable?.let { Text("Unavailable: $it") }
+                                    TextButton(onClick = { agent.toggleSkill(skill.name) }, enabled = !state.busy && !session.active && state.skillsAllowed && skill.unavailable == null) { Text("${if (skill.name in state.activeSkills) "Deactivate" else "Activate"} ${skill.name}") }
                                 }
                                 state.skillIssues.forEach { Text("${it.directory}: ${it.reason}") }
                                 Text("Active: ${state.activeSkills.joinToString().ifBlank { "none" }}")
-                                state.toolEvents.forEach { Text(it) }
-                            }
-                        }
-
-                        item {
-                            LabCard("This phone") {
-                                Text("${Build.MANUFACTURER} ${Build.MODEL}")
-                                Text("Android ${Build.VERSION.RELEASE} · API ${Build.VERSION.SDK_INT}")
-                                Text("Language: ${java.util.Locale.getDefault().toLanguageTag()}")
-                                Text("Local recognizer: ${if (state.localRecognitionAvailable) "available" else "unavailable"}")
-                                Text("Offline English voice: ${if (state.ttsInitializing) "checking…" else state.localVoice ?: "not installed"}")
-                            }
-                        }
-                        item {
-                            LabCard("Try local speech") {
-                                Button(
-                                    onClick = {
-                                        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
-                                            agent.listenTest()
-                                        } else { speechTestPermissionPending = true; microphonePermission.launch(Manifest.permission.RECORD_AUDIO) }
-                                    },
-                                    enabled = !state.busy && !cloud.busy && state.localRecognitionAvailable && state.audio == AudioState.IDLE && !keyword.active,
-                                    modifier = Modifier.fillMaxWidth(),
-                                ) { Text("Listen to a phrase") }
-                                Button(
-                                    onClick = agent::speak,
-                                    enabled = !state.busy && !cloud.busy && state.localVoice != null && state.audio == AudioState.IDLE && !keyword.active,
-                                    modifier = Modifier.fillMaxWidth(),
-                                ) { Text(if (state.transcript.isBlank()) "Test local voice" else "Read transcript aloud") }
-                                OutlinedButton(
-                                    onClick = agent::stopAudio,
-                                    enabled = state.audio != AudioState.IDLE,
-                                    modifier = Modifier.fillMaxWidth(),
-                                ) { Text("Stop audio") }
-                                Text("Speech tests run while this app is visible. Install voice/language data first, then repeat in airplane mode to verify offline operation.")
-                            }
-                        }
-                        item {
-                            LabCard("Transcript") {
-                                SelectionContainer { Text(state.transcript.ifBlank { "Your words will appear here." }) }
-                            }
-                        }
-                        item {
-                            LabCard("ChatGPT plan experiment") {
-                                Text("${cloud.connection} · Subscription only")
-                                Text("Tests use your ChatGPT plan allowance. The image test uploads a generated red square and blue circle; the function test only echoes a fixed value.")
-                                Button(onClick = { modelLab.signIn { uri -> startActivity(Intent(Intent.ACTION_VIEW, uri)) } }, enabled = !state.busy && !cloud.busy) { Text("Continue with ChatGPT") }
-                                cloud.accounts.forEach { (id, label) ->
-                                    OutlinedButton(onClick = { modelLab.selectAccount(id) }, enabled = !state.busy && !cloud.busy) { Text("Use $label") }
-                                    OutlinedButton(onClick = { modelLab.signIn(id) { uri -> startActivity(Intent(Intent.ACTION_VIEW, uri)) } }, enabled = !state.busy && !cloud.busy) { Text("Reconnect $label") }
-                                }
-                                OutlinedButton(onClick = modelLab::fetchModels, enabled = !state.busy && !cloud.busy && cloud.connection != "Not connected") { Text("Fetch account models") }
-                                cloud.models.forEach { model ->
-                                    OutlinedButton(onClick = { modelLab.selectModel(model.slug) }, enabled = !state.busy && !cloud.busy) {
-                                        Text("${if (model.slug == cloud.selectedModel) "✓ " else ""}${model.name}")
-                                    }
-                                }
-                                Button(onClick = modelLab::textTrial, enabled = !state.busy && !cloud.busy && cloud.selectedModel != null) { Text("Test text turn") }
-                                Button(onClick = modelLab::imageTrial, enabled = !state.busy && !cloud.busy && cloud.selectedModel != null) { Text("Upload diagnostic image") }
-                                Button(onClick = modelLab::toolTrial, enabled = !state.busy && !cloud.busy && cloud.selectedModel != null) { Text("Test harmless function") }
-                                OutlinedButton(onClick = modelLab::refreshTokens, enabled = !state.busy && !cloud.busy && cloud.connection != "Not connected") { Text("Test token renewal") }
-                                OutlinedButton(onClick = modelLab::signOut, enabled = !state.busy && !cloud.busy && cloud.connection != "Not connected") { Text("Sign out") }
-                                OutlinedButton(onClick = modelLab::cancel, enabled = cloud.busy) { Text("Cancel experiment") }
-                                SelectionContainer { Text(cloud.result) }
-                                Text("Credentials stay encrypted on this phone. Completed conversations are saved locally; diagnostic experiments are not saved. If Android kills the app during sign-in, return and start a fresh attempt.")
-                            }
-                        }
-                        item {
-                            LabCard("Five-minute keyword experiment") {
-                                Text("sherpa-onnx 1.12.14 · English GigaSpeech 3.3M · keyword: hello world")
-                                Text("${keyword.notice} · ${keyword.detections} detections · ${keyword.elapsedMs / 1000} s")
-                                Button(onClick = {
-                                    agent.stopAudio()
-                                    if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-                                        keywordPermissionPending = true
-                                        microphonePermission.launch(Manifest.permission.RECORD_AUDIO)
-                                    } else if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                                        notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
-                                    } else startKeywordSession()
-                                }, enabled = !keyword.active && !state.busy && !cloud.busy) { Text("Start local keyword session") }
-                                OutlinedButton(onClick = ::stopKeywordSession, enabled = keyword.active) { Text("Stop keyword session") }
-                                Text("Microphone stays active with the screen off until Stop or the five-minute timeout. Audio is discarded locally. Detections only increment the counter; they do not call AI or read private information. Notification permission is required for the visible Stop action.")
-                            }
+                            } }
+                            item { SettingsCard("Diagnostics") {
+                                Text("Synthetic online tests use your plan allowance. The image is a generated red square and blue circle.")
+                                Button(onClick = modelLab::textTrial, enabled = !state.busy && !cloud.busy && !session.active && cloud.selectedModel != null) { Text("Test model text") }
+                                OutlinedButton(onClick = modelLab::imageTrial, enabled = !state.busy && !cloud.busy && !session.active && cloud.selectedModel != null) { Text("Upload diagnostic image") }
+                                OutlinedButton(onClick = modelLab::toolTrial, enabled = !state.busy && !cloud.busy && !session.active && cloud.selectedModel != null) { Text("Test harmless function") }
+                                OutlinedButton(onClick = modelLab::refreshTokens, enabled = !state.busy && !cloud.busy && !session.active && cloud.connection != "Not connected") { Text("Test token renewal") }
+                                TextButton(onClick = modelLab::cancel, enabled = cloud.busy) { Text("Cancel experiment") }
+                                Text(keyword.notice)
+                                OutlinedButton(onClick = { stopService(Intent(this@MainActivity, KeywordService::class.java)) }, enabled = keyword.active) { Text("Stop old keyword trial") }
+                                Text("Wake engine: sherpa-onnx 1.12.14 · GigaSpeech 3.3M · hello world. Keyword audio is discarded locally. No camera capture.")
+                            } }
                         }
                     }
                 }
             }
         }
     }
-
-    private fun startKeywordSession() {
-        agent.stopAudio()
-        try { startForegroundService(Intent(this, KeywordService::class.java)) }
-        catch (_: RuntimeException) { agent.permissionDenied() }
+    private fun startHandsFree(duration: Long) {
+        try { startForegroundService(Intent(this, HandsFreeService::class.java).putExtra(HandsFreeService.DURATION, duration)) }
+        catch (_: RuntimeException) { agent.showNotice("Android could not start hands-free. Keep the app visible and check microphone/notification access.") }
     }
-
-    private fun stopKeywordSession() { stopService(Intent(this, KeywordService::class.java)) }
-
+    private fun stopHandsFree() { stopService(Intent(this, HandsFreeService::class.java)) }
     override fun onStop() {
-        if (!isChangingConfigurations) {
-            if (agent.state.value.busy) agent.cancel() else agent.stopAudio()
+        if (!isChangingConfigurations && !HandsFreeService.state.value.active) {
+            if (agent.state.value.busy) agent.cancel() else if (agent.state.value.audio != AudioState.IDLE) agent.stopAudio()
         }
         super.onStop()
     }
 }
 
 @Composable
-private fun LabCard(title: String, content: @Composable () -> Unit) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+private fun SettingsCard(title: String, content: @Composable ColumnScope.() -> Unit) {
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(title, style = MaterialTheme.typography.titleMedium)
             content()
         }

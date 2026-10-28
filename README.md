@@ -19,20 +19,36 @@
 
 ## Development
 
-The native Kotlin/Jetpack Compose app supports text and push-to-talk conversations,
-streaming replies, local sentence playback, an editable persona, completed history,
-and bundled Agent Skills. It also retains the device diagnostics lab. Microphone
-access is requested when starting recognition; audio stops when the app leaves
-the foreground. Completed conversations and persona are saved on the phone.
+The native Kotlin/Jetpack Compose app opens on an animated agent face with text
+conversation, **Talk to Pixel**, and **Start hands-free**. Choose 15 minutes,
+one hour (default), or eight hours. Say **hello world**, wait for the tone, then
+speak your message. Local recognition sends the transcript to your selected
+ChatGPT model, and the agent replies through the phone's offline voice. The
+agent listens for a follow-up after playback and a short cooldown, without another
+wake word. Silence returns it to waiting for **hello world**. Tap Stop in the app or its
+persistent notification to end the session. Skills are optional and live in
+Settings; adding Gmail/Drive skills is separate work.
+
+An explicitly started hands-free session can continue with the screen off.
+Microphone and notification access are required; sessions do not automatically
+resume after process death, force-stop or reboot. Without a hands-free session,
+conversation/audio stop when the app leaves the foreground. Settings contains
+account/model selection, persona, existing skill controls and speech/model tests.
+The selected account model is validated against its catalog on a fresh process
+start; completed history and persona remain on this phone.
+
+See [the Phase 4 guide](docs/PHASE4.md) for the wake engine, lifecycle limits and
+remaining live-voice/accuracy/battery checks. Implementation does not establish
+all-day reliability or the eight-hour battery target.
 
 Speech recognition/playback, skill loading and storage run locally. AI reasoning
 runs online through the signed-in ChatGPT subscription: prompts, recent history,
 persona and relevant skill instructions/resources are sent to OpenAI. This is not
 an offline reasoning model. Speech-test transcripts are not uploaded automatically.
 
-Phase 0 now includes a separate ChatGPT plan authentication/inference lab and a
-five-minute local keyword session with a foreground notification and Stop action.
-The keyword is **hello world**; detections increment a counter. The model lab
+The original Phase 0 diagnostics retain a separate ChatGPT plan authentication/
+inference lab and five-minute keyword counter service. The main hands-free
+control now connects **hello world** to real conversation turns. The model lab
 tests text, a generated diagnostic image, a harmless function, and credential
 renewal. Credentials are encrypted with Android Keystore. Text/image/function
 turns, renewal, browser callback, and reconnect have passed on the Pixel account.
@@ -44,7 +60,7 @@ no billable API fallback is enabled. Phase 0's feasibility gate is complete;
 see the experiment log for evidence and measurement limits. Phase 1 implementation
 adds a bounded conversation/tool controller, standard skill catalog and resource
 loading, explicit activation, permission controls, and safe context restoration.
-Its voice latency distribution still needs measurement. See [the Phase 1 guide](docs/PHASE1.md).
+Its voice latency distribution still needs measurement. See [the Phase 1 guide](docs/PHASE1.md) and [Phase 4 guide](docs/PHASE4.md).
 Gmail, Drive, camera capture, durable factual memory, and generic app control remain
 later work. See the [skills and app-control research](docs/SKILLS-AND-APP-CONTROL.md)
 for compatibility limits and root-free Android control options.
@@ -85,6 +101,11 @@ installation. Adding `-LiveModel <account-model-slug>` explicitly enables live
 synthetic model trials and a temporary network interruption/restoration test.
 See [the Phase 1 guide](docs/PHASE1.md) before running the live suite.
 
+Use `.\scripts\dev.ps1 test-phase4` for short local microphone/service lifecycle
+checks. Start unlocked in a quiet room with a selected account model. It tests
+expiry/restart and notification Stop with the screen off, preserving sign-in;
+normal unlocking is needed after the screen-off test.
+
 The standard wrapper is also available: `bash ./gradlew assembleDebug lintDebug` on
 macOS/Linux or `.\gradlew.bat assembleDebug lintDebug` on Windows. Configure your
 SDK with `ANDROID_HOME` or an untracked `local.properties` file. No credentials,
@@ -103,17 +124,17 @@ USB connection assistant or Google's Windows USB driver. Root is not required.
 ### First speech experiment
 
 1. Launch **Pixel Agent**. Check the local recognizer and offline voice status.
-2. Tap **Test local voice**. Then tap **Listen to a phrase**, allow the microphone,
-   and say a short sentence. Read it back using **Read transcript aloud**.
+2. Open **Settings**, tap **Test local voice**, then **Test local recognition**, allow the microphone,
+   and say a short sentence. Read it back using **Test local voice**.
 3. If language/voice data is unavailable, install it in Android's speech settings.
    The recognition test uses the phone's current language; playback selects English,
    preferring an Australian voice. Reopen the app after installing voice data.
 4. Repeat with Wi-Fi and mobile data disabled to verify offline behavior. Availability
    checks alone do not establish accuracy or prove an offline run succeeded.
-5. Tap **Stop audio**, or leave the app, and check that microphone use ends.
+5. Tap **Stop audio**, or leave the app without starting hands-free, and check that microphone use ends.
 
-Cloud authentication and keyword capture have separate controls further down the
-lab screen. They do not automatically run after a speech test. Account sign-in
+Account controls and diagnostic speech/model tests are in **Settings**.
+They do not automatically run after a speech test. Account sign-in
 and real offline speech passed in Phase 0. Instrumentation tests
 can erase app data when Gradle uninstalls test APKs; run them before signing in.
 See [PLAN.md](PLAN.md) for the implementation plan and
